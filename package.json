@@ -1,0 +1,26 @@
+{
+  "name": "postgres-gen-dao",
+  "version": "0.0.1",
+  "description": "A simple DAO library built on postgres-gen and pg.",
+  "homepage": "https://github.com/evs-chris/node-postgres-gen-dao",
+  "license": "MIT",
+  "author": { "name": "Chris Reeves" },
+  "main": "index.js",
+  "repository": { "type": "git", "url": "https://github.com/evs-chris/node-postgres-gen-dao.git" },
+    "files": [ "package.json", "index.js", "LICENSE.md" ],
+    "engines": {
+      "node": ">=0.11.0"
+    },
+    "dependencies": {
+      "lodash": "^2",
+      "postgres-gen": "^0"
+    },
+    "devDependencies": {
+      "pg.js": "^3",
+      "mocha": "^1",
+      "should": "^4"
+    },
+    "scripts": {
+      "test": "node_modules/.bin/mocha --harmony --reporter spec test.js"
+    }
+}
