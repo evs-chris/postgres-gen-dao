@@ -2,14 +2,14 @@
 
 postgres-gen-dao is a simple DAO library built on postgres-gen and pg. Its goal is to remove the boilerplate associated with marshalling objects to and from tables.
 
-As an aside, PostgreSQL JSON support is very very nice in node.js. Starting with 9.3 and the hstore-json merger, tilt tables are a thing of the past.
+As an aside, PostgreSQL JSON support is very very nice in node.js. Starting with 9.4 and the hstore-json merger, tilt tables are a thing of the past.
 
 ## Usage
 
 ```javascript
 var db = '...'; // your postgres-gen db here
 var dao = require('postgres-gen-dao');
-var books = doa({ db: db, table: 'books' });
+var books = dao({ db: db, table: 'books' });
 
 // let's assume our table is id:bigserial-primarykey, author:varchar, title:varchar, published:integer, details:json, created_at:timestamptz-current_timestamp(3), updated_at:timestamptz-current_timestamp(3)
 var b = { author: 'John Public', title: 'I Like Books', published: 1733, details: { binding: 'leather', color: 'red' } };
@@ -32,6 +32,12 @@ books.upsert(b).then(function() {
     // b is book with id 1
   });
 });
+
+db.transaction(function*() {
+  var b = yield books.findOne('id = ?', 1);
+  yield dao.delete(b); // delete by model, will throw if more than one row is affected
+  yield dao.delete('published > 1967'); // delete by query, returns count
+});
 ```
 
 Since all of the query methods return a promise (from postgres-gen), this plays nicely with generator-based flow control.
@@ -39,4 +45,3 @@ Since all of the query methods return a promise (from postgres-gen), this plays 
 ## TODO:
 
 * [ ] Support table multi-table results that have child objects loaded automatically
-* [ ] Support deleting objects

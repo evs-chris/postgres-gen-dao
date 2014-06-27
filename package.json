@@ -18,9 +18,11 @@
     "devDependencies": {
       "pg.js": "^3",
       "mocha": "^1",
-      "should": "^4"
+      "should": "^4",
+      "when": "^3"
     },
     "scripts": {
+      "test-brk": "node_modules/.bin/mocha --harmony --debug-brk --reporter spec test.js",
       "test": "node_modules/.bin/mocha --harmony --reporter spec test.js"
     }
 }

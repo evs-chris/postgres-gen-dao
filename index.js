@@ -4,6 +4,16 @@ var _ = require('lodash');
 var pg = require('postgres-gen');
 var norm = pg.normalizeQueryArguments;
 
+var log;
+try {
+  log = require('blue-ox')('dao');
+} catch (e) {
+  log = (function() {
+    var fn = function() {};
+    return { fatal: fn, error: fn, warn: fn, debug: fn, trace: fn };
+  })();
+}
+
 function camelCase(name) { return name.replace(/_([a-zA-Z])/g, function(m) { return m.slice(1).toUpperCase(); }); }
 function snakeCase(name) { return name.replace(/([A-Z])/g, function(m) { return '_' + m.toLowerCase(); }); }
 function ident(name) {
@@ -56,10 +66,17 @@ module.exports = function(opts) {
   var optConcur = concurrency.columns || gconcurrency.columns || [];
   var concurVal = concurrency.value || gconcurrency.value || function() { return new Date(); };
   var table = opts.table;
+  out.prototype = opts.prototype || {};
+  
+  // always start unloaded
+  out.prototype._generated_loaded = false;
 
   if (!(opts.hasOwnProperty('skipRegistry') ? opts.skipRegistry : false)) {
     var daoCache = registry[db.connectionString()] || {};
     registry[db.connectionString()] = daoCache;
+    if (daoCache.hasOwnProperty(table)) {
+      return daoCache[table];
+    }
     daoCache[table] = out;
   }
 
@@ -73,37 +90,52 @@ module.exports = function(opts) {
     ' from pg_catalog.pg_attribute a join pg_catalog.pg_class c on c.oid = a.attrelid where c.relname = $table and a.attnum >= 0;',
   { table: table, type: 'p' }).then(function(rs) {
     out.columns = _.map(rs.rows, function(r) { return _.pick(r, ['name', 'elidable', 'pkey']); });
+    log.trace('columns for %s are %j', table, out.columns);
     return out.columns;
   });
 
-  columns.then(function(cols) {
+  var ready = columns.then(function(cols) {
     var arr = [];
     for (var c in cols) {
       if (!!cols[c].pkey) arr.push(cols[c].name);
     }
     arr.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
     out.keys = arr;
+
+    out.find = find;
+    out.findOne = findOne;
+    out.insert = insert;
+    out.update = update;
+    out.upsert = upsert;
+    out.delete = del;
+    out.load = load;
   });
 
   out.db = db;
   out.table = table;
 
-  out.find = function(conditions) {
-    return db.query(norm(['SELECT * FROM ' + ident(table) + (conditions !== undefined && conditions !== '' ? ' WHERE ' + conditions : '') + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
+  out.new = function() {
+    return Object.create(out.prototype);
+  };
+
+  var find = function(conditions) {
+    return db.query(norm(['SELECT * FROM ' + ident(table) + (!!conditions ? ' WHERE ' + conditions : '') + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
       var cache = {};
       return _.map(rs.rows, function(r) {
         return out.load(r, { cache: cache });
       });
     });
   };
+  out.find = function() { return ready.then(function() { return find.apply(out, Array.prototype.slice.call(arguments, 0)); }); };
 
-  out.findOne = function(conditions) {
-    return db.queryOne(norm(['SELECT * FROM ' + ident(table) + ' WHERE ' + conditions + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
+  var findOne = function(conditions) {
+    return db.queryOne(norm(['SELECT * FROM ' + ident(table) + (!!conditions ? ' WHERE ' + conditions : '') + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
       return out.load(rs);
     });
   };
+  out.findOne = function() { return ready.then(function() { return findOne.apply(out, Array.prototype.slice.call(arguments, 0)); }); };
 
-  out.insert = function insert(obj) {
+  var insert = function insert(obj) {
     var sql = 'INSERT INTO "' + table + '" (\n\t';
     var cols = [], params = [], fetch = [];
     var c, col, nm, columns = out.columns;
@@ -131,8 +163,9 @@ module.exports = function(opts) {
       return obj;
     });
   };
+  out.insert = function(obj) { return ready.then(function() { return insert(obj); }); };
 
-  out.update = function(obj) {
+  var update = function(obj) {
     var sql = 'UPDATE "' + table + '" SET\n\t';
     var cols = [], cond = [], tmp = [], fetch = [];
     var c, col, nm, tnm;
@@ -175,8 +208,9 @@ module.exports = function(opts) {
       return obj;
     });
   };
+  out.update = function(obj) { return ready.then(function() { return update(obj); }); };
 
-  out.upsert = function(obj) {
+  var upsert = function(obj) {
     if (!!obj._generated_loaded) return out.update(obj);
     else {
       var res = true, cols = out.columns;
@@ -187,6 +221,38 @@ module.exports = function(opts) {
       else return out.insert(obj);
     }
   };
+  out.upsert = function(obj) { return ready.then(function() { return upsert(obj); }); };
+
+  var del = function() {
+    if (arguments.length < 1) return Promise.reject('Refusing to empty the ' + table + ' table.');
+    if (typeof arguments[0] === 'string') {
+      return db.nonQuery(norm(Array.prototype.concat('DELETE FROM ' + ident(table) + ' WHERE ' + arguments[0], Array.prototype.slice.call(arguments, 1))));
+    } else if (arguments[0].hasOwnProperty('_generated_loaded')) {
+      var obj = arguments[0];
+      var sql = 'DELETE FROM ' + ident(table) + ' WHERE\n\t';
+      var params = [];
+      for (var c in out.columns) {
+        c = out.columns[c];
+        if (c.pkey || optConcur.indexOf(c.name) > -1) {
+          if (params.length > 0) sql += ', ';
+          sql += ident(c.name) + ' = ?';
+          var name = obj.hasOwnProperty(c.name) ? c.name : camelCase(c.name);
+          params.push(obj[name]);
+        }
+      }
+      sql += ';';
+
+      if (params.length < 1) return Promise.reject(new Error('Can\'t identify this object in the database.'));
+
+      return db.transaction(function*() {
+        var count = yield db.nonQuery(sql, params);
+        if (count !== 1) throw new Error('Too many records deleted. Expected 1, tried to delete ' + count + '.');
+        delete obj['_generated_loaded'];
+        return count;
+      });
+    }
+  };
+  out.delete = function() { return ready.then(function() { return del.call(out, Array.prototype.slice.call(arguments, 0)); }); };
 
   out.aliasColumns = function(alias) {
     var cols = [];
@@ -196,7 +262,7 @@ module.exports = function(opts) {
     return cols.join(', ');
   };
 
-  out.load = function(rec, options) {
+  var load = function(rec, options) {
     var c, col, res;
     options = options || {};
     var alias = (!!options.alias ? '_' + options.alias + '__' : '');
@@ -205,7 +271,8 @@ module.exports = function(opts) {
 
     if (cache.hasOwnProperty(lookup)) return cache[lookup];
 
-    res = { '_generated_loaded': true };
+    res = out.new();
+    res._generated_loaded = true;
     for (c in out.columns) {
       col = out.columns[c].name;
       res[camelCase(col)] = rec[alias + col];
@@ -215,6 +282,7 @@ module.exports = function(opts) {
 
     return res;
   };
+  out.load = function(rec, options) { return ready.then(function() { return load(rec, options); }); };
 
   // TODO: add table reference support for join handling
   /*out.reference = function() {

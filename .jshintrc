@@ -8,6 +8,7 @@
     "__dirname",
     "__filename",
     "require",
-    "process"
+    "process",
+    "global"
   ]
 }
