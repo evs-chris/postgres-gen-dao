@@ -1,5 +1,7 @@
 "use strict";
 
+// TODO: computed columns in tables i.e. now()-datecol as age?
+
 var _ = require('lodash');
 var pg = require('postgres-gen');
 var norm = pg.normalizeQueryArguments;
@@ -10,14 +12,14 @@ try {
 } catch (e) {
   log = (function() {
     var fn = function() {};
-    return { fatal: fn, error: fn, warn: fn, debug: fn, trace: fn };
+    return { fatal: fn, error: fn, warn: fn, debug: fn, trace: fn, info: fn };
   })();
 }
 
 function camelCase(name) { return name.replace(/_([a-zA-Z])/g, function(m) { return m.slice(1).toUpperCase(); }); }
-function snakeCase(name) { return name.replace(/([A-Z])/g, function(m) { return '_' + m.toLowerCase(); }); }
+//function snakeCase(name) { return name.replace(/([A-Z])/g, function(m) { return '_' + m.toLowerCase(); }); }
 function ident(name) {
-  if (name.indexOf('"') === 0 || name.lastIndexOf('"') === name.length - 1) return name;
+  if (name.indexOf('"') === 0 && name.lastIndexOf('"') === name.length - 1) return name;
   else return '"' + name.replace(/"/, '""') + '"';
 }
 
@@ -25,15 +27,15 @@ var registry = {};
 
 function qlToQuery(params) {
   params = params || {};
-  var daoCache = params.db.connectionString();
+  var daoCache = registry[params.db.connectionString()];
   var query = params.query || '';
   var tables = {};
   var sql = '';
-  sql = query.replace(/@"?([a-zA-Z_]*[a-zA-Z0-9_]*)"?\s*[aA][sS]\s*"?([a-zA-Z_]*[a-zA-Z0-9_]*)"?/g, function(m, tbl, alias) {
-    tables[alias] = daoCache[tbl];
-    return ident(tbl) + ' as ' + ident(alias);
+  sql = query.replace(/@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s+(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?/g, function(m, tbl, alias) {
+    tables[alias || tbl] = daoCache[tbl];
+    return ident(tbl) + ' AS ' + ident(alias || tbl);
   });
-  sql = sql.replace(/@([a-zA-Z_]*[a-zA-Z0-9_]*)\.\*/g, function(m, alias) {
+  sql = sql.replace(/@"?([a-zA-Z_]*[a-zA-Z0-9_]*)"?\.\"?\*"?/g, function(m, alias) {
     var dao = tables[alias];
     var arr = [];
     for (var c in dao.columns) {
@@ -43,7 +45,7 @@ function qlToQuery(params) {
   });
 
   return {
-    query: query,
+    query: sql,
     aliases: tables
   };
 }
@@ -51,7 +53,7 @@ function qlToQuery(params) {
 var gopts = {
   camelCase: true,
   optimisticConcurrency: {
-    value: function(i) { return new Date(); },
+    value: function(/*i*/) { return new Date(); },
     columns: ['updated_at']
   }
 };
@@ -67,7 +69,7 @@ module.exports = function(opts) {
   var concurVal = concurrency.value || gconcurrency.value || function() { return new Date(); };
   var table = opts.table;
   out.prototype = opts.prototype || {};
-  
+
   // always start unloaded
   out.prototype._generated_loaded = false;
 
@@ -80,7 +82,7 @@ module.exports = function(opts) {
     daoCache[table] = out;
   }
 
-  function cacheName(table, keys) {
+  function cacheName(keys) {
     return table + '[' + keys.join(',') + ']';
   }
 
@@ -104,6 +106,7 @@ module.exports = function(opts) {
 
     out.find = find;
     out.findOne = findOne;
+    out.query = query;
     out.insert = insert;
     out.update = update;
     out.upsert = upsert;
@@ -126,14 +129,33 @@ module.exports = function(opts) {
       });
     });
   };
-  out.find = function() { return ready.then(function() { return find.apply(out, Array.prototype.slice.call(arguments, 0)); }); };
+  out.find = function() { var args = arguments; return ready.then(function() { return find.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
   var findOne = function(conditions) {
     return db.queryOne(norm(['SELECT * FROM ' + ident(table) + (!!conditions ? ' WHERE ' + conditions : '') + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
       return out.load(rs);
     });
   };
-  out.findOne = function() { return ready.then(function() { return findOne.apply(out, Array.prototype.slice.call(arguments, 0)); }); };
+  out.findOne = function() { var args = arguments; return ready.then(function() { return findOne.apply(out, Array.prototype.slice.call(args, 0)); }); };
+
+  var query = function(/*ql, [params], [options]*/) {
+    var args = Array.prototype.slice.call(arguments, 0);
+    var q = pg.normalizeQueryArguments(args);
+    var qs = qlToQuery({ db: db, query: q.query });
+    q.query = qs.query;
+    if (!!q.options) q.options = { fetch: q.options };
+    else q.options = {};
+    for (var k in qs.aliases) if (qs.aliases[k] === out) q.options.alias = k;
+    q.options.aliases = qs.aliases;
+    return db.query(q).then(function(rs) {
+      q.options.cache = {};
+      return _.map(rs.rows, function(r) {
+        var res = out.load(r, q.options);
+        if (!!res) return res;
+      });
+    });
+  };
+  out.query = function() { var args = arguments; return ready.then(function() { return query.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
   var insert = function insert(obj) {
     var sql = 'INSERT INTO "' + table + '" (\n\t';
@@ -247,12 +269,12 @@ module.exports = function(opts) {
       return db.transaction(function*() {
         var count = yield db.nonQuery(sql, params);
         if (count !== 1) throw new Error('Too many records deleted. Expected 1, tried to delete ' + count + '.');
-        delete obj['_generated_loaded'];
+        delete obj._generated_loaded;
         return count;
       });
     }
   };
-  out.delete = function() { return ready.then(function() { return del.call(out, Array.prototype.slice.call(arguments, 0)); }); };
+  out.delete = function() { var args = arguments; return ready.then(function() { return del.call(out, Array.prototype.slice.call(args, 0)); }); };
 
   out.aliasColumns = function(alias) {
     var cols = [];
@@ -262,26 +284,55 @@ module.exports = function(opts) {
     return cols.join(', ');
   };
 
-  var load = function(rec, options) {
-    var c, col, res;
-    options = options || {};
-    var alias = (!!options.alias ? '_' + options.alias + '__' : '');
-    var lookup = cacheName(rec, _.map(out.keys, function(k) { return rec[k]; }));
-    var cache = options.cache || {};
+  var load = (function() {
+    var fromObject = function(target, obj, rec, cache, aliases) {
+      var k, v, dao, res;
+      for (k in obj) {
+        res = null;
+        v = obj[k];
+        dao = aliases[k];
+        if (!!!dao) continue;
+        if (typeof v === 'string') { // one-to-one simple
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k });
+          if (!!res) target[k] = res;
+        } else if (Array.isArray(v) && v.length <= 1) { // one-to-many
+          if (!!!target[k] || !Array.isArray(target[k])) target[k] = [];
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v[1] });
+          if (!!res) target[k].push(res);
+        } else if (typeof v === 'object') { // one-to-one complex
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v });
+          if (!!res) target[k] = res;
+        }
+      }
+    };
+    return function(rec, options) {
+      options = options || {};
+      var alias = (!!options.alias ? '_' + options.alias + '__' : '');
+      if (!_.reduce(out.keys, function(a, c) { return a && !!rec[alias + c]; }, true)) return null;
+      var c, col, res;
+      var aliases = options.aliases || {};
+      var lookup = cacheName(_.map(out.keys, function(k) { return rec[alias + k]; }));
+      var cache = options.cache || {};
 
-    if (cache.hasOwnProperty(lookup)) return cache[lookup];
+      if (cache.hasOwnProperty(lookup)) res = cache[lookup];
 
-    res = out.new();
-    res._generated_loaded = true;
-    for (c in out.columns) {
-      col = out.columns[c].name;
-      res[camelCase(col)] = rec[alias + col];
-    }
+      if (!!!res) {
+        res = out.new();
+        res._generated_loaded = true;
+        for (c in out.columns) {
+          col = out.columns[c].name;
+          res[camelCase(col)] = rec[alias + col];
+        }
+        cache[lookup] = res;
+      }
 
-    // TODO: load associations from options
+      if (!!options.fetch) {
+        fromObject(res, options.fetch, rec, cache, aliases);
+      }
 
-    return res;
-  };
+      return res;
+    };
+  })();
   out.load = function(rec, options) { return ready.then(function() { return load(rec, options); }); };
 
   // TODO: add table reference support for join handling
