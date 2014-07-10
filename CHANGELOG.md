@@ -1,3 +1,9 @@
+## 0.2.0
+
+* __BUG:__ Fixes calling convention for initial version of functions that require metadata to be collected before they can be run (find, update, etc).
+* Fixes initial version of ql query parser that adjusts aliased tables prefixed with @ to be references to DAOs.
+* Adds support for loading associated records from ql queries if a mapping is supplied.
+
 ## 0.1.0
 
 * Supports deleting by object and by query
