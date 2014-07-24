@@ -16,13 +16,16 @@ var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_te
 var dao;
 var proto = { foo: true };
 
+var stmts = [];
+db.log(function(m) { stmts.push(m); });
+
 before(function(done) {
   db.transaction(function*() {
     yield db.nonQuery('drop table if exists test;');
-    yield db.nonQuery('create table test (id bigserial primary key, name varchar);');
+    yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     dao = mod({ db: db, table: 'test', prototype: proto });
     (yield dao.find()).length.should.equal(0);
-    dao.columns.length.should.equal(2);
+    dao.columns.length.should.equal(3);
   }).then(done, done);
 });
 
@@ -81,9 +84,26 @@ describe('upserts, inserts, and updates', function() {
       var i = yield dao.findOne('id = ?', 1);
       i.name.should.equal('John');
       i.name = 'Larry';
+      i.email = 'larry@perl.org';
       yield dao.upsert(i);
       i = yield dao.findOne('id = ?', 1);
       i.name.should.equal('Larry');
+      i.email.should.equal('larry@perl.org');
+    }).then(done, done);
+  });
+
+  it('should only send available fields on update', function(done) {
+    db.transaction(function*() {
+      var i = yield dao.findOne('id = ?', 1);
+      stmts = [];
+      var name = i.name;
+      delete i.name;
+      yield dao.update(i);
+      i = yield dao.findOne('id = ?', 1);
+      i.name.should.equal(name);
+      var q = stmts[0].query;
+      q.should.match(/email/);
+      q.should.not.match(/name/);
     }).then(done, done);
   });
 });

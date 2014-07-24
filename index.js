@@ -203,7 +203,7 @@ module.exports = function(opts) {
       col = out.columns[c];
       tnm = nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
       if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
-        cols.push({ name: col.name, value: nm });
+        if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm });
       } else {
         if (optConcur.indexOf(col.name) >= 0) {
           var v = concurVal(col.name);
@@ -215,6 +215,8 @@ module.exports = function(opts) {
         cond.push({ name: col.name, value: nm });
       }
     }
+
+    if (cols.length === 0) throw new Error('Update called for object with no data to update.');
 
     for (c in cols) { tmp.push(ident(cols[c].name) + ' = $' + cols[c].value); }
     sql += tmp.join(', ');
