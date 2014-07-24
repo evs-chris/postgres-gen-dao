@@ -1,3 +1,7 @@
+## 0.3.0
+
+* Adds support for setting properties in dao.new using flat objects, property descriptors, or a mixture of the two.
+
 ## 0.2.0
 
 * __BUG:__ Fixes calling convention for initial version of functions that require metadata to be collected before they can be run (find, update, etc).
