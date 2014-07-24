@@ -44,6 +44,17 @@ describe('dao object prototypes', function() {
     var obj = dao.new();
     obj.foo.should.equal(true);
   });
+  
+  it('should allow properties to be set upon newing', function() {
+    var target;
+    var obj = dao.new({ id: '10t', name: 'Yep', nested: { obj: true }, es5: { get: function() { return 'hey'; }, set: function(v) { target = v; } } });
+    obj.id.should.equal('10t');
+    obj.name.should.equal('Yep');
+    obj.nested.obj.should.equal(true);
+    obj.es5.should.equal('hey');
+    obj.es5 = 'foo';
+    target.should.equal('foo');
+  });
 });
 
 it('should have the table available', function(done) {

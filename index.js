@@ -117,8 +117,16 @@ module.exports = function(opts) {
   out.db = db;
   out.table = table;
 
-  out.new = function() {
-    return Object.create(out.prototype);
+  out.new = function(props) {
+    if (!!props) {
+      var p = {};
+      for (var k in props) {
+        if (!!props[k].value || typeof props[k].get === 'function' || typeof props[k].set === 'function') p[k] = props[k];
+        else p[k] = { value: props[k], writable: true, configurable: true, enumerable: true };
+      }
+      return Object.create(out.prototype, p);
+    }
+    else return Object.create(out.prototype);
   };
 
   var find = function(conditions) {
