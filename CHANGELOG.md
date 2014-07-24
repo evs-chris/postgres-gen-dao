@@ -1,3 +1,7 @@
+## 0.4.0
+
+* __BUG?:__ Limits updates to columns present within the update object to avoid setting missing columns to null. Columns that need to be set to null must explicitly be set to null to be included in an update query.
+
 ## 0.3.0
 
 * Adds support for setting properties in dao.new using flat objects, property descriptors, or a mixture of the two.
