@@ -1,3 +1,7 @@
+## 0.4.1
+
+* __BUG?:__ Avoids adding the same object to the query results multiple times when processing a joined result set.
+
 ## 0.4.0
 
 * __BUG?:__ Limits updates to columns present within the update object to avoid setting missing columns to null. Columns that need to be set to null must explicitly be set to null to be included in an update query.
