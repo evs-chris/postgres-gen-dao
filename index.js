@@ -157,10 +157,11 @@ module.exports = function(opts) {
     q.options.aliases = qs.aliases;
     return db.query(q).then(function(rs) {
       q.options.cache = {};
-      return _.map(rs.rows, function(r) {
+      return _.foldl(rs.rows, function(a, r) {
         var res = out.load(r, q.options);
-        if (!!res) return res;
-      });
+        if (a.indexOf(res) < 0) a.push(res);
+        return a;
+      }, []);
     });
   };
   out.query = function() { var args = arguments; return ready.then(function() { return query.apply(out, Array.prototype.slice.call(args, 0)); }); };

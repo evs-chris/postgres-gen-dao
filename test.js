@@ -13,7 +13,7 @@ var mod = require('./');
 var pg = require('postgres-gen');
 var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_test', password: 'postgres_gen_test' });
 
-var dao;
+var dao, otherDao;
 var proto = { foo: true };
 
 var stmts = [];
@@ -22,9 +22,13 @@ db.log(function(m) { stmts.push(m); });
 before(function(done) {
   db.transaction(function*() {
     yield db.nonQuery('drop table if exists test;');
+    yield db.nonQuery('drop table if exists other;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
+    yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
     dao = mod({ db: db, table: 'test', prototype: proto });
+    otherDao = mod({ db: db, table: 'other' });
     (yield dao.find()).length.should.equal(0);
+    (yield otherDao.find()).length.should.equal(0);
     dao.columns.length.should.equal(3);
   }).then(done, done);
 });
@@ -121,6 +125,18 @@ describe('finding', function() {
     db.transaction(function*() {
       var i = yield dao.findOne();
       i.name.should.match(/Larry|Susan/);
+    }).then(done, done);
+  });
+
+  it ('should skip duplicates if processing a record set with the same object in it multiple times', function(done) {
+    db.transaction(function*() {
+      yield otherDao.insert({ value: 'Other 1', testId: 1 });
+      yield otherDao.insert({ value: 'Other 2', testId: 1 });
+      var ts = yield dao.query('select t.*, @others.* from test t join @other others on others.test_id = t.id where t.id = ?', 1, { others: [] });
+      ts.length.should.equal(1);
+      ts[0].others.length.should.equal(2);
+      ts = yield dao.query('select t.*, @others.* from test t left join @other others on others.test_id = t.id', { others: [] });
+      ts.length.should.equal(2);
     }).then(done, done);
   });
 });
