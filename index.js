@@ -89,7 +89,8 @@ module.exports = function(opts) {
   var columns = db.query(
     'select a.attname as name, a.atthasdef or not a.attnotnull as elidable,' +
     ' (select conkey from pg_catalog.pg_constraint where conrelid = a.attrelid and contype = $type) @> ARRAY[a.attnum] as pkey' +
-    ' from pg_catalog.pg_attribute a join pg_catalog.pg_class c on c.oid = a.attrelid where c.relname = $table and a.attnum >= 0;',
+    ' from pg_catalog.pg_attribute a join pg_catalog.pg_class c on c.oid = a.attrelid where c.relname = $table and a.attnum >= 0' +
+    ' and a.attisdropped = false;',
   { table: table, type: 'p' }).then(function(rs) {
     out.columns = _.map(rs.rows, function(r) { return _.pick(r, ['name', 'elidable', 'pkey']); });
     log.trace('columns for %s are %j', table, out.columns);
