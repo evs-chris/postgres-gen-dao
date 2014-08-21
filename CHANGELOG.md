@@ -1,3 +1,7 @@
+## 0.4.2
+
+* __BUG:__ Skips dropped columns when fetching table metadata.
+
 ## 0.4.1
 
 * __BUG?:__ Avoids adding the same object to the query results multiple times when processing a joined result set.
