@@ -1,3 +1,8 @@
+## 0.5.0
+
+* Adds support for an extra record processor during record load.
+* Adds support for referencing individual columns in aliased tables for ql.
+
 ## 0.4.2
 
 * __BUG:__ Skips dropped columns when fetching table metadata.
