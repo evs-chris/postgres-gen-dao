@@ -35,13 +35,19 @@ function qlToQuery(params) {
     tables[alias || tbl] = daoCache[tbl];
     return ident(tbl) + ' AS ' + ident(alias || tbl);
   });
-  sql = sql.replace(/@"?([a-zA-Z_]*[a-zA-Z0-9_]*)"?\.\"?\*"?/g, function(m, alias) {
-    var dao = tables[alias];
-    var arr = [];
-    for (var c in dao.columns) {
-      arr.push(ident(alias) + '.' + ident(dao.columns[c].name) + ' AS ' + ident('_' + alias + '__' + dao.columns[c].name));
+  sql = sql.replace(/@"?([a-zA-Z_]*[a-zA-Z0-9_]*)"?\.\"?([a-zA-Z]*[a-zA-Z0-9_]+|\*)"?/g, function(m, alias, col) {
+    var dao = tables[alias], c;
+    if (col === '*') {
+      var arr = [];
+      for (c in dao.columns) {
+        arr.push(ident(alias) + '.' + ident(dao.columns[c].name) + ' AS ' + ident('_' + alias + '__' + dao.columns[c].name));
+      }
+      return arr.join(', ');
+    } else {
+      c = _.find(dao.columns, function(cc) { return cc.name === col; });
+      if (!!c) return ident(alias) + '.' + ident(c.name) + ' AS ' + ident('_' + alias + '__' + c.name);
+      else return '';
     }
-    return arr.join(', ');
   });
 
   return {
@@ -151,10 +157,24 @@ module.exports = function(opts) {
     var args = Array.prototype.slice.call(arguments, 0);
     var q = pg.normalizeQueryArguments(args);
     var qs = qlToQuery({ db: db, query: q.query });
+    var k, fetch, found = false;
+    q.options = q.options || {};
     q.query = qs.query;
-    if (!!q.options) q.options = { fetch: q.options };
-    else q.options = {};
-    for (var k in qs.aliases) if (qs.aliases[k] === out) q.options.alias = k;
+
+    if (!q.options.hasOwnProperty('fetch')) {
+      fetch = {};
+      // look for fetch parameters
+      for (k in qs.aliases) {
+        if (q.options.hasOwnProperty(k)) {
+          fetch[k] = q.options[k];
+          delete q.options[k];
+          found = true;
+        }
+      }
+      if (found) q.options.fetch = fetch;
+    }
+
+    for (k in qs.aliases) if (qs.aliases[k] === out) q.options.alias = k;
     q.options.aliases = qs.aliases;
     return db.query(q).then(function(rs) {
       q.options.cache = {};
@@ -337,6 +357,10 @@ module.exports = function(opts) {
         }
         cache[lookup] = res;
       }
+
+      // run any extra handlers
+      if (!!options.extra && typeof options.extra === 'function') options.extra(rec, res);
+      else if (!!options.extra && typeof options.extra[options.alias] === 'function') options.extra[options.alias](rec, res);
 
       if (!!options.fetch) {
         fromObject(res, options.fetch, rec, cache, aliases);
