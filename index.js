@@ -66,6 +66,7 @@ var gopts = {
 
 module.exports = function(opts) {
   opts = opts || {};
+  var casts = opts.cast || {};
   var out = opts.target || {};
   var db = opts.db;
   var useCamelCase = (opts.hasOwnProperty('camelCase') ? opts.camelCase : (gopts.hasOwnProperty('camelCase') ? gopts.camelCase : true));
@@ -94,11 +95,17 @@ module.exports = function(opts) {
 
   var columns = db.query(
     'select a.attname as name, a.atthasdef or not a.attnotnull as elidable,' +
-    ' (select conkey from pg_catalog.pg_constraint where conrelid = a.attrelid and contype = $type) @> ARRAY[a.attnum] as pkey' +
+    ' (select conkey from pg_catalog.pg_constraint where conrelid = a.attrelid and contype = $type) @> ARRAY[a.attnum] as pkey,' +
+    ' (select t.typname from pg_catalog.pg_type t where t.oid = a.atttypid) as "type"' +
     ' from pg_catalog.pg_attribute a join pg_catalog.pg_class c on c.oid = a.attrelid where c.relname = $table and a.attnum >= 0' +
     ' and a.attisdropped = false;',
   { table: table, type: 'p' }).then(function(rs) {
-    out.columns = _.map(rs.rows, function(r) { return _.pick(r, ['name', 'elidable', 'pkey']); });
+    out.columns = _.map(rs.rows, function(r) { return _.pick(r, ['name', 'elidable', 'pkey', 'type']); });
+    _.each(out.columns, function(c) {
+      // if the type starts with _, it is an array and should be cast automagically
+      if (!!casts[c.name]) c.cast = casts[c.name];
+      else if (c.type.indexOf('_') === 0) c.cast = c.type;
+    });
     log.trace('columns for %s are %j', table, out.columns);
     return out.columns;
   });
@@ -196,7 +203,7 @@ module.exports = function(opts) {
       nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
       if (obj.hasOwnProperty(nm)) {
         cols.push(ident(col.name));
-        params.push('$' + nm);
+        params.push('$' + nm + (!!c.cast ? '::' + c.cast : ''));
       } else if (col.elidable) {
         fetch.push(col.name);
       } else throw new Error('Missing non-elidable column ' + col.name + '.');
@@ -225,14 +232,16 @@ module.exports = function(opts) {
       col = out.columns[c];
       tnm = nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
       if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
-        if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm });
+        if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm, cast: col.cast });
+        // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
+        if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
       } else {
         if (optConcur.indexOf(col.name) >= 0) {
           var v = concurVal(col.name);
           tnm = '_generated_' + col.name;
           obj[tnm] = v;
           fetch.push({ name: nm, value: v });
-          cols.push({ name: col.name, value: tnm });
+          cols.push({ name: col.name, value: tnm, cast: col.cast });
         }
         cond.push({ name: col.name, value: nm });
       }
@@ -240,7 +249,7 @@ module.exports = function(opts) {
 
     if (cols.length === 0) throw new Error('Update called for object with no data to update.');
 
-    for (c in cols) { tmp.push(ident(cols[c].name) + ' = $' + cols[c].value); }
+    for (c in cols) { tmp.push(ident(cols[c].name) + ' = $' + cols[c].value + (!!cols[c].cast ? '::' + cols[c].cast : '')); }
     sql += tmp.join(', ');
     sql += '\nWHERE\n\t';
 
