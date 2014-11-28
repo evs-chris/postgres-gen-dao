@@ -1,3 +1,8 @@
+## 0.6.0
+
+* Adds support for automatically casting parameters in insert and update.
+  * Automatically casts array parameters if they are present.
+
 ## 0.5.0
 
 * Adds support for an extra record processor during record load.
