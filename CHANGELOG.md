@@ -1,3 +1,7 @@
+## 0.8.0
+
+* Adds support for excluding fields in find and findOne.
+
 ## 0.7.0
 
 * Adds support for excluding fields in ql queries.

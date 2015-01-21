@@ -61,3 +61,11 @@ It may also specify a `fetch` map or its contents, similar to the way ActiveReco
 Any `options` keys that match an alias will be automatically included in the fetch map, so a `fetch` key is optional but may be more clear.
 
 If an `exclude` map is provided, any fields for a table's alias in the exclude array will not be included in the `SELECT` statement. The keys of the map must match `@` referenced tables, e.g. `dao.query('select @t.* from @foo t;', {}, { exclude: { t: [ 'big_array_blob_field' ] } });`. In this example, the `big_array_blob_field` will not be included in the list of the `t.*` fields.
+
+### `find|findOne( [ conditions ], [ parameters ], [ options ] )`
+
+Both find and findOne take the same parameters. The only difference is findOne will throw if more than one result, which would otherwise be returned directly, is returned.
+
+#### `options`
+
+`exclude` - an array of column names to exclude from the query.
