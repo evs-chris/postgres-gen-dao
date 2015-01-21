@@ -134,7 +134,7 @@ module.exports = function(opts) {
   out.db = db;
   out.table = table;
 
-  out.new = function(props) {
+  out.new = out.make = function(props) {
     if (!!props) {
       var p = {};
       for (var k in props) {
@@ -147,7 +147,17 @@ module.exports = function(opts) {
   };
 
   var find = function(conditions) {
-    return db.query(norm(['SELECT * FROM ' + ident(table) + (!!conditions ? ' WHERE ' + conditions : '') + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
+    var args = Array.prototype.slice.call(arguments, 0);
+    var hasCond = typeof conditions === 'string';
+    if (!args[0]) args[0] = '';
+    else if (!hasCond) args.unshift('');
+
+    var q = norm(args);
+    q.options.exclude = q.options.exclude || [];
+
+    q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
+
+    return db.query(q).then(function(rs) {
       var cache = {};
       return _.map(rs.rows, function(r) {
         return out.load(r, { cache: cache });
@@ -157,7 +167,17 @@ module.exports = function(opts) {
   out.find = function() { var args = arguments; return ready.then(function() { return find.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
   var findOne = function(conditions) {
-    return db.queryOne(norm(['SELECT * FROM ' + ident(table) + (!!conditions ? ' WHERE ' + conditions : '') + ';'].concat(Array.prototype.slice.call(arguments, 1)))).then(function(rs) {
+    var args = Array.prototype.slice.call(arguments, 0);
+    var hasCond = typeof conditions === 'string';
+    if (!args[0]) args[0] = '';
+    else if (!hasCond) args.unshift('');
+
+    var q = norm(args);
+    q.options.exclude = q.options.exclude || [];
+
+    q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
+
+    return db.queryOne(q).then(function(rs) {
       return out.load(rs);
     });
   };
@@ -197,7 +217,7 @@ module.exports = function(opts) {
   };
   out.query = function() { var args = arguments; return ready.then(function() { return query.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
-  var insert = function insert(obj) {
+  var insert = function(obj) {
     var sql = 'INSERT INTO "' + table + '" (\n\t';
     var cols = [], params = [], fetch = [];
     var c, col, nm, columns = out.columns;
@@ -318,7 +338,7 @@ module.exports = function(opts) {
       });
     }
   };
-  out.delete = function() { var args = arguments; return ready.then(function() { return del.call(out, Array.prototype.slice.call(args, 0)); }); };
+  out.delete = out.del = function() { var args = arguments; return ready.then(function() { return del.call(out, Array.prototype.slice.call(args, 0)); }); };
 
   out.aliasColumns = function(alias) {
     var cols = [];

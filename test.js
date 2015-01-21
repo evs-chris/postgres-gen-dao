@@ -34,7 +34,7 @@ before(function(done) {
 });
 
 after(function(done) {
-  db.nonQuery('drop table test;').then(function() { done(); }, done);
+  db.nonQuery('drop table test; drop table other;').then(function() { done(); }, done);
 });
 
 describe('dao object prototypes', function() {
@@ -140,13 +140,34 @@ describe('finding', function() {
     }).then(done, done);
   });
 
-  it('should allow fields to be excluded', function(done) {
+  it('should allow fields to be excluded for ql queries', function(done) {
     db.transaction(function*() {
       var ts = yield dao.query('select @t.* from @test t', {}, { exclude: { t: [ 'email' ] } });
       ts.length.should.equal(2);
       (ts[0].email === undefined).should.equal(true);
       ts[0].name.should.equal('Larry');
       (ts[1].email === undefined).should.equal(true);
+    }).then(done, done);
+  });
+
+  it('should allow fields to be excluded for find queries', function(done) {
+    db.transaction(function*() {
+      var ts = yield dao.find({ exclude: [ 'email' ] });
+      ts.length.should.equal(2);
+      ts[0].name.should.equal('Larry');
+      (ts[0].email === undefined).should.equal(true);
+
+      ts = yield dao.find('name = ?', 'Larry', { exclude: [ 'email' ] });
+      ts.length.should.equal(1);
+      ts[0].name.should.equal('Larry');
+      (ts[0].email === undefined).should.equal(true);
+
+      var t = yield dao.findOne({ exclude: [ 'email' ] });
+      t.name.should.equal('Larry');
+      (t.email === undefined).should.equal(true);
+      t = yield dao.findOne('name = ?', 'Susan', { exclude: [ 'email' ] });
+      t.name.should.equal('Susan');
+      (t.email === undefined).should.equal(true);
     }).then(done, done);
   });
 });
@@ -165,7 +186,7 @@ describe('deleting', function() {
   it('should delete by query', function(done) {
     db.transaction(function*() {
       (yield dao.delete('id = 2')).should.equal(1);
-      (yield dao.find('id = 2')).length.should.equal(0);
+      (yield dao.find('id = $foo', { foo: 2 })).length.should.equal(0);
     }).then(done, done);
   });
 });
