@@ -30,6 +30,7 @@ function qlToQuery(params) {
   var daoCache = registry[params.db.connectionString()];
   var query = params.query || '';
   var tables = {};
+  var exclude = params.exclude || {};
   var sql = '';
   sql = query.replace(/@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s+(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?/g, function(m, tbl, alias) {
     tables[alias || tbl] = daoCache[tbl];
@@ -40,7 +41,9 @@ function qlToQuery(params) {
     if (col === '*') {
       var arr = [];
       for (c in dao.columns) {
-        arr.push(ident(alias) + '.' + ident(dao.columns[c].name) + ' AS ' + ident('_' + alias + '__' + dao.columns[c].name));
+        if ((exclude[alias] || []).indexOf(dao.columns[c].name) === -1) {
+          arr.push(ident(alias) + '.' + ident(dao.columns[c].name) + ' AS ' + ident('_' + alias + '__' + dao.columns[c].name));
+        }
       }
       return arr.join(', ');
     } else {
@@ -163,9 +166,9 @@ module.exports = function(opts) {
   var query = function(/*ql, [params], [options]*/) {
     var args = Array.prototype.slice.call(arguments, 0);
     var q = pg.normalizeQueryArguments(args);
-    var qs = qlToQuery({ db: db, query: q.query });
-    var k, fetch, found = false;
     q.options = q.options || {};
+    var qs = qlToQuery({ db: db, query: q.query, exclude: q.options.exclude });
+    var k, fetch, found = false;
     q.query = qs.query;
 
     if (!q.options.hasOwnProperty('fetch')) {

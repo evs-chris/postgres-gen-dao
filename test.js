@@ -128,7 +128,7 @@ describe('finding', function() {
     }).then(done, done);
   });
 
-  it ('should skip duplicates if processing a record set with the same object in it multiple times', function(done) {
+  it('should skip duplicates if processing a record set with the same object in it multiple times', function(done) {
     db.transaction(function*() {
       yield otherDao.insert({ value: 'Other 1', testId: 1 });
       yield otherDao.insert({ value: 'Other 2', testId: 1 });
@@ -137,6 +137,16 @@ describe('finding', function() {
       ts[0].others.length.should.equal(2);
       ts = yield dao.query('select t.*, @others.* from test t left join @other others on others.test_id = t.id', { others: [] });
       ts.length.should.equal(2);
+    }).then(done, done);
+  });
+
+  it('should allow fields to be excluded', function(done) {
+    db.transaction(function*() {
+      var ts = yield dao.query('select @t.* from @test t', {}, { exclude: { t: [ 'email' ] } });
+      ts.length.should.equal(2);
+      (ts[0].email === undefined).should.equal(true);
+      ts[0].name.should.equal('Larry');
+      (ts[1].email === undefined).should.equal(true);
     }).then(done, done);
   });
 });
