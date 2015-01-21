@@ -1,3 +1,7 @@
+## 0.7.0
+
+* Adds support for excluding fields in ql queries.
+
 ## 0.6.0
 
 * Adds support for automatically casting parameters in insert and update.

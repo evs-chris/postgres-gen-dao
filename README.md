@@ -59,3 +59,5 @@ The ql processor returns a substituted query and an alias map so that the `load`
 It may also specify a `fetch` map or its contents, similar to the way ActiveRecord specifies fetches. For instance, to specify that a `book` should have one author, `{ author: '' }`. If a book should have multiple authors, `{ authors: [] }`. The specifiers may be nested as needed, for instance, `{ authors: [{ publisher: '', commisions: [] }] }` would return books with and authors array where the authors each had a publisher and an array of comissions. Each key must match an alias in a ql query, or it will be ignored.
 
 Any `options` keys that match an alias will be automatically included in the fetch map, so a `fetch` key is optional but may be more clear.
+
+If an `exclude` map is provided, any fields for a table's alias in the exclude array will not be included in the `SELECT` statement. The keys of the map must match `@` referenced tables, e.g. `dao.query('select @t.* from @foo t;', {}, { exclude: { t: [ 'big_array_blob_field' ] } });`. In this example, the `big_array_blob_field` will not be included in the list of the `t.*` fields.
