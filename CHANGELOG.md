@@ -1,3 +1,7 @@
+## 0.8.1
+
+* __BUG:__ Makes sure informational schemas (pg_cataolg, information_schema, etc) are excluded when looking up table metadata.
+
 ## 0.8.0
 
 * Adds support for excluding fields in find and findOne.
