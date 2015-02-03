@@ -100,7 +100,10 @@ module.exports = function(opts) {
     'select a.attname as name, a.atthasdef or not a.attnotnull as elidable,' +
     ' (select conkey from pg_catalog.pg_constraint where conrelid = a.attrelid and contype = $type) @> ARRAY[a.attnum] as pkey,' +
     ' (select t.typname from pg_catalog.pg_type t where t.oid = a.atttypid) as "type"' +
-    ' from pg_catalog.pg_attribute a join pg_catalog.pg_class c on c.oid = a.attrelid where c.relname = $table and a.attnum >= 0' +
+    ' from pg_catalog.pg_attribute a join pg_catalog.pg_class c on c.oid = a.attrelid' +
+    ' left join pg_catalog.pg_namespace n on n.oid = c.relnamespace' +
+    ' where c.relname = $table and a.attnum >= 0' +
+    ' and (n.nspname <> \'pg_catalog\' and n.nspname <> \'information_schema\' and n.nspname !~ \'^pg_toast\')' +
     ' and a.attisdropped = false;',
   { table: table, type: 'p' }).then(function(rs) {
     out.columns = _.map(rs.rows, function(r) { return _.pick(r, ['name', 'elidable', 'pkey', 'type']); });
