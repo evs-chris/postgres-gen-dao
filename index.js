@@ -24,6 +24,8 @@ function ident(name) {
 }
 
 var registry = {};
+var tableAliases = /@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s(?:(?!\s*(?:on|where)\s)\s*(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?)?/gi;
+var fieldAliases = /@:?"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?\."?([a-zA-Z_]+[a-zA-Z0-9_]+|\*)"?/gi;
 
 function qlToQuery(params) {
   params = params || {};
@@ -32,12 +34,17 @@ function qlToQuery(params) {
   var tables = {};
   var exclude = params.exclude || {};
   var sql = '';
-  sql = query.replace(/@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s+(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?/g, function(m, tbl, alias) {
+
+  // map in other tables and record aliases
+  sql = query.replace(tableAliases, function(m, tbl, alias) {
     tables[alias || tbl] = daoCache[tbl];
     return ident(tbl) + ' AS ' + ident(alias || tbl);
   });
-  sql = sql.replace(/@"?([a-zA-Z_]*[a-zA-Z0-9_]*)"?\.\"?([a-zA-Z]*[a-zA-Z0-9_]+|\*)"?/g, function(m, alias, col) {
+
+  // map and expand aliased fields e.g. @alias.field and @alias.* or direct aliases @:alias.field
+  sql = sql.replace(fieldAliases, function(m, alias, col) {
     var dao = tables[alias], c;
+    if (!dao) return m;
     if (col === '*') {
       var arr = [];
       for (c in dao.columns) {
@@ -48,7 +55,7 @@ function qlToQuery(params) {
       return arr.join(', ');
     } else {
       c = _.find(dao.columns, function(cc) { return cc.name === col; });
-      if (!!c) return ident(alias) + '.' + ident(c.name) + ' AS ' + ident('_' + alias + '__' + c.name);
+      if (!!c) return (m.indexOf(':') === -1 ? ident(alias) + '.' + ident(c.name) + ' AS ' : '') + ident('_' + alias + '__' + c.name);
       else return '';
     }
   });
