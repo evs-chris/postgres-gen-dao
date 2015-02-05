@@ -44,7 +44,7 @@ Since all of the query methods return a promise (from postgres-gen), this plays 
 
 ## ql
 
-ql is the slight adjustment to SQL that allows references to DAO tables and columns to be referenced at a higher level with the details being filled in automatically. It uses `@` references with optional aliases to look up which DAO table and columns to inject into the query. For instance, `SELECT @b.*, @a.* from @books b join @authors a on b.author_id = a.id;` will look up the models with for tables `books` and `authors` and replace `@b.*` and `@a.*` with a full aliased field list and substitute the tables names for `@books` and `@authors`.
+ql is the slight adjustment to SQL that allows references to DAO tables and columns to be referenced at a higher level with the details being filled in automatically. It uses `@` references with optional aliases to look up which DAO table and columns to inject into the query. For instance, `SELECT @b.*, @a.* from @books b join @authors a on b.author_id = a.id;` will look up the models with for tables `books` and `authors` and replace `@b.*` and `@a.*` with a full aliased field list and substitute the tables names for `@books` and `@authors`. Individual fields can also be referenced using `@b.author_id`, which will result in an aliased field reference (`"b"."author_id" AS "_b__author_id"`), or `@:b.author_id`, which will result in an alias reference (`"_b__author_id"`). The former is useful to select single fields from tables, and the latter is useful to reference single fields in complex queries, particularly those with CTEs.
 
 The ql processor returns a substituted query and an alias map so that the `load` handler can retrieve models using their aliased fields.
 

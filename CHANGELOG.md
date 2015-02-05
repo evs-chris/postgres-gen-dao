@@ -1,3 +1,9 @@
+## 0.9.0
+
+* __BUG:__ Fixes support for non-aliased DAO references in QL queries. References followed by 'on' or 'where' no longer require an alias.
+* __BUG:__ Carries extra modifiers to secondary object during load as well. There may still be some issues with how this is done for deep hierarchies.
+* Adds support for alias-only field references in QL queries using `@:alias.field`. This makes it possible to more easily reference fields in complex queries, particularly those with CTEs.
+
 ## 0.8.1
 
 * __BUG:__ Makes sure informational schemas (pg_cataolg, information_schema, etc) are excluded when looking up table metadata.
