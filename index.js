@@ -359,22 +359,30 @@ module.exports = function(opts) {
   };
 
   var load = (function() {
-    var fromObject = function(target, obj, rec, cache, aliases) {
-      var k, v, dao, res;
+    // TODO: this could really use some caching, especially for large datasets
+    var fromObject = function(target, obj, rec, cache, aliases, extra) {
+      var k, v, dao, res, ex;
+      extra = extra || {};
       for (k in obj) {
         res = null;
         v = obj[k];
         dao = aliases[k];
+
         if (!!!dao) continue;
+
+        // allow extra processors to be passed along
+        ex = extra;
+        if (ex[k]) ex = ex[k];
+
         if (typeof v === 'string') { // one-to-one simple
-          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k });
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, extra: extra });
           if (!!res) target[k] = res;
         } else if (Array.isArray(v) && v.length <= 1) { // one-to-many
           if (!!!target[k] || !Array.isArray(target[k])) target[k] = [];
-          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v[1] });
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v[1], extra: extra });
           if (!!res) target[k].push(res);
         } else if (typeof v === 'object') { // one-to-one complex
-          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v });
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v, extra: extra });
           if (!!res) target[k] = res;
         }
       }
@@ -401,11 +409,11 @@ module.exports = function(opts) {
       }
 
       // run any extra handlers
-      if (!!options.extra && typeof options.extra === 'function') options.extra(rec, res);
-      else if (!!options.extra && typeof options.extra[options.alias] === 'function') options.extra[options.alias](rec, res);
+      if (!!options.extra && typeof options.extra === 'function') options.extra.call(this, rec, res, options);
+      else if (!!options.extra && typeof options.extra[options.alias] === 'function') options.extra[options.alias].call(this, rec, res, options);
 
       if (!!options.fetch) {
-        fromObject(res, options.fetch, rec, cache, aliases);
+        fromObject(res, options.fetch, rec, cache, aliases, options.extra);
       }
 
       return res;
