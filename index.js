@@ -167,7 +167,9 @@ module.exports = function(opts) {
 
     q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
 
-    return db.query(q).then(function(rs) {
+    var target = q.options.transaction || q.options.db || db;
+
+    return target.query(q).then(function(rs) {
       var cache = {};
       return _.map(rs.rows, function(r) {
         return out.load(r, { cache: cache });
@@ -187,7 +189,9 @@ module.exports = function(opts) {
 
     q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
 
-    return db.queryOne(q).then(function(rs) {
+    var target = q.options.transaction || q.options.db || db;
+
+    return target.queryOne(q).then(function(rs) {
       return out.load(rs);
     });
   };
@@ -216,7 +220,10 @@ module.exports = function(opts) {
 
     for (k in qs.aliases) if (qs.aliases[k] === out) q.options.alias = k;
     q.options.aliases = qs.aliases;
-    return db.query(q).then(function(rs) {
+
+    var target = q.options.transaction || q.options.db || db;
+
+    return target.query(q).then(function(rs) {
       q.options.cache = {};
       return _.foldl(rs.rows, function(a, r) {
         var res = out.load(r, q.options);
@@ -227,7 +234,8 @@ module.exports = function(opts) {
   };
   out.query = function() { var args = arguments; return ready.then(function() { return query.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
-  var insert = function(obj) {
+  var insert = function(obj, opts) {
+    opts = opts || {};
     var sql = 'INSERT INTO "' + table + '" (\n\t';
     var cols = [], params = [], fetch = [];
     var c, col, nm, columns = out.columns;
@@ -247,7 +255,9 @@ module.exports = function(opts) {
     if (fetch.length > 0)
       sql += ' RETURNING ' + fetch.join(', ') + ';';
 
-    return db.queryOne(sql, obj).then(function(r) {
+    var target = opts.transaction || opts.db || db;
+
+    return target.queryOne(sql, obj).then(function(r) {
       for (var c in fetch) {
         obj[useCamelCase ? camelCase(fetch[c]) : fetch[c]] = r[fetch[c]];
       }
@@ -255,9 +265,10 @@ module.exports = function(opts) {
       return obj;
     });
   };
-  out.insert = function(obj) { return ready.then(function() { return insert(obj); }); };
+  out.insert = function(obj, opts) { return ready.then(function() { return insert(obj, opts); }); };
 
-  var update = function(obj) {
+  var update = function(obj, opts) {
+    opts = opts || {};
     var sql = 'UPDATE "' + table + '" SET\n\t';
     var cols = [], cond = [], tmp = [], fetch = [];
     var c, col, nm, tnm;
@@ -294,7 +305,9 @@ module.exports = function(opts) {
     }
     sql += tmp.join(' AND ') + ';';
 
-    return db.nonQuery(sql, obj).then(function(rs) {
+    var target = opts.transaction || opts.db || db;
+
+    return target.nonQuery(sql, obj).then(function(rs) {
       if (rs != 1) throw new Error('Wrong number of results. Expected 1. Got ' + rs + '.');
       var c;
       for (c in fetch) obj[fetch[c].name] = fetch[c].value;
@@ -304,27 +317,31 @@ module.exports = function(opts) {
       return obj;
     });
   };
-  out.update = function(obj) { return ready.then(function() { return update(obj); }); };
+  out.update = function(obj, opts) { return ready.then(function() { return update(obj, opts); }); };
 
-  var upsert = function(obj) {
-    if (!!obj._generated_loaded) return out.update(obj);
+  var upsert = function(obj, opts) {
+    if (!!obj._generated_loaded) return out.update(obj, opts);
     else {
       var res = true, cols = out.columns;
       for (var i = 0; res && i < cols.length; i++) {
         if (!!!cols[i].elidable || !obj.hasOwnProperty(cols[i].name)) res = false;
       }
-      if (res) return out.update(obj);
-      else return out.insert(obj);
+      if (res) return out.update(obj, opts);
+      else return out.insert(obj, opts);
     }
   };
-  out.upsert = function(obj) { return ready.then(function() { return upsert(obj); }); };
+  out.upsert = function(obj, opts) { return ready.then(function() { return upsert(obj, opts); }); };
 
   var del = function() {
+    var opts, target;
     if (arguments.length < 1) return Promise.reject('Refusing to empty the ' + table + ' table.');
     if (typeof arguments[0] === 'string') {
-      return db.nonQuery(norm(Array.prototype.concat('DELETE FROM ' + ident(table) + ' WHERE ' + arguments[0], Array.prototype.slice.call(arguments, 1))));
+      var q = norm(Array.prototype.concat('DELETE FROM ' + ident(table) + ' WHERE ' + arguments[0], Array.prototype.slice.call(arguments, 1)));
+      target = q.options.transaction || q.options.db || db;
+      return target.nonQuery(q);
     } else if (arguments[0].hasOwnProperty('_generated_loaded')) {
       var obj = arguments[0];
+      opts = arguments[1] || {};
       var sql = 'DELETE FROM ' + ident(table) + ' WHERE\n\t';
       var params = [];
       for (var c in out.columns) {
@@ -340,12 +357,15 @@ module.exports = function(opts) {
 
       if (params.length < 1) return Promise.reject(new Error('Can\'t identify this object in the database.'));
 
-      return db.transaction(function*() {
+      var next = function*() {
         var count = yield db.nonQuery(sql, params);
         if (count !== 1) throw new Error('Too many records deleted. Expected 1, tried to delete ' + count + '.');
         delete obj._generated_loaded;
         return count;
-      });
+      };
+
+      if (opts.transaction) return opts.transaction.transaction(next);
+      else return (opts.db || db).transaction(next);
     }
   };
   out.delete = out.del = function() { var args = arguments; return ready.then(function() { return del.call(out, Array.prototype.slice.call(args, 0)); }); };
