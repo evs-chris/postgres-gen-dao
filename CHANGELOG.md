@@ -1,3 +1,7 @@
+## 0.10.0
+
+* Adds support for passing a transaction along through the DAO methods in case domains can't be used (or fall over).
+
 ## 0.9.0
 
 * __BUG:__ Fixes support for non-aliased DAO references in QL queries. References followed by 'on' or 'where' no longer require an alias.
