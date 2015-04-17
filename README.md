@@ -48,13 +48,17 @@ ql is the slight adjustment to SQL that allows references to DAO tables and colu
 
 The ql processor returns a substituted query and an alias map so that the `load` handler can retrieve models using their aliased fields.
 
+## Keyless tables
+
+Keyless tables are partially supported in that records can be inserted, loaded, and updated, but the method for doing so is not ideal. When a keyless record is loaded (or inserted), its values are cloned into a generated member, which is then used to target the record for updates and deletes. Keyless records are expected to be unique for updates and deletes.
+
 ## API
 
 ### `query( sql, [ parameters ], [ options ] )`
 
 `query` allows you to run a ql query with optional parameters and collect the results into a more graph-like form.
 
-`options` may specify an `extra` function or map of functions (per-alias) that will be called with each the record and result object for every new row. This can be used to add computed fields to the object output of a query.
+`options` may specify an `extra` function or map of functions (per-alias) that will be called with each record and result object for every new row. This can be used to add computed fields to the object output of a query.
 
 It may also specify a `fetch` map or its contents, similar to the way ActiveRecord specifies fetches. For instance, to specify that a `book` should have one author, `{ author: '' }`. If a book should have multiple authors, `{ authors: [] }`. The specifiers may be nested as needed, for instance, `{ authors: [{ publisher: '', commisions: [] }] }` would return books with and authors array where the authors each had a publisher and an array of comissions. Each key must match an alias in a ql query, or it will be ignored.
 

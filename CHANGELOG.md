@@ -1,3 +1,8 @@
+## 0.11.0
+
+* __BUG:__ Fixes support for loading records from a keyless table.
+* Adds support for inserting and updating objects in a keyless table by using all of the values in the record as criteria. A `lastValues` object may also be supplied as an option to be used in place of the automatically cached version.
+
 ## 0.10.0
 
 * Adds support for passing a transaction along through the DAO methods in case domains can't be used (or fall over).
