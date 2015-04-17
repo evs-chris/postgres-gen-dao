@@ -1,9 +1,6 @@
 "use strict";
 
-/* global before */
-/* global after */
-/* global it */
-/* global describe */
+/* global before, after, it, describe */
 
 global.Promise = require('when/es6-shim/Promise');
 
@@ -13,7 +10,7 @@ var mod = require('./');
 var pg = require('postgres-gen');
 var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_test', password: 'postgres_gen_test' });
 
-var dao, otherDao;
+var dao, otherDao, keylessDao;
 var proto = { foo: true };
 
 var stmts = [];
@@ -23,18 +20,22 @@ before(function(done) {
   db.transaction(function*() {
     yield db.nonQuery('drop table if exists test;');
     yield db.nonQuery('drop table if exists other;');
+    yield db.nonQuery('drop table if exists keyless;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
+    yield db.nonQuery('create table keyless (str varchar, flag boolean, num integer);');
     dao = mod({ db: db, table: 'test', prototype: proto });
     otherDao = mod({ db: db, table: 'other' });
+    keylessDao = mod({ db: db, table: 'keyless' });
     (yield dao.find()).length.should.equal(0);
     (yield otherDao.find()).length.should.equal(0);
+    (yield keylessDao.find()).length.should.equal(0);
     dao.columns.length.should.equal(3);
   }).then(done, done);
 });
 
 after(function(done) {
-  db.nonQuery('drop table test; drop table other;').then(function() { done(); }, done);
+  db.nonQuery('drop table test; drop table other; drop table keyless;').then(function() { done(); }, done);
 });
 
 describe('dao object prototypes', function() {
@@ -51,7 +52,7 @@ describe('dao object prototypes', function() {
     var obj = dao.new();
     obj.foo.should.equal(true);
   });
-  
+
   it('should allow properties to be set upon newing', function() {
     var target;
     var obj = dao.new({ id: '10t', name: 'Yep', nested: { obj: true }, es5: { get: function() { return 'hey'; }, set: function(v) { target = v; } } });
@@ -79,7 +80,7 @@ describe('upserts, inserts, and updates', function() {
       var i = dao.new();
       i.name = 'John';
       yield dao.upsert(i);
-      i.id.should.eql(1);
+      i.id.should.equal('1');
     }).then(done, done);
   });
 
@@ -108,6 +109,32 @@ describe('upserts, inserts, and updates', function() {
       var q = stmts[0].query;
       q.should.match(/email/);
       q.should.not.match(/name/);
+    }).then(done, done);
+  });
+
+  it('should be able to insert keyless records', function(done) {
+    db.transaction(function*() {
+      var i = keylessDao.new();
+      i.str = 'foo';
+      i.flag = true;
+      i.num = 10;
+      yield keylessDao.insert(i);
+      i = yield keylessDao.find('num = ?', 10);
+      i.length.should.equal(1);
+      i[0].str.should.equal('foo');
+    }).then(done, done);
+  });
+
+  it('should be able to update keyless records', function(done) {
+    db.transaction(function*() {
+      yield keylessDao.insert({ num: 12, str: 'foo', flag: true });
+      var i = yield keylessDao.findOne('num = 10');
+      i.str.should.equal('foo');
+      i.num.should.equal(10);
+      i.str = 'bar';
+      i._generated_last_values.str.should.equal('foo');
+      i = yield keylessDao.update(i);
+      i._generated_last_values.str.should.equal('bar');
     }).then(done, done);
   });
 });
@@ -170,6 +197,15 @@ describe('finding', function() {
       (t.email === undefined).should.equal(true);
     }).then(done, done);
   });
+
+  it('should be able to properly find records in a keyless table', function(done) {
+    db.transaction(function*() {
+      var ks = yield keylessDao.find('1 = 1 order by num asc');
+      ks.length.should.equal(2);
+      ks[0].str.should.equal('bar');
+      ks[1].str.should.equal('foo');
+    }).then(done, done);
+  });
 });
 
 describe('deleting', function() {
@@ -187,6 +223,15 @@ describe('deleting', function() {
     db.transaction(function*() {
       (yield dao.delete('id = 2')).should.equal(1);
       (yield dao.find('id = $foo', { foo: 2 })).length.should.equal(0);
+    }).then(done, done);
+  });
+
+  it('should be able to delete records in a keyless table', function(done) {
+    db.transaction(function*() {
+      var i = yield keylessDao.findOne('num = 10');
+      i._generated_loaded.should.equal(true);
+      yield keylessDao.delete(i);
+      (yield keylessDao.find('num = 10')).length.should.equal(0);
     }).then(done, done);
   });
 });

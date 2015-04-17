@@ -100,6 +100,7 @@ module.exports = function(opts) {
   }
 
   function cacheName(keys) {
+    if (keys.length === 0) return '';
     return table + '[' + keys.join(',') + ']';
   }
 
@@ -257,13 +258,24 @@ module.exports = function(opts) {
 
     var target = opts.transaction || opts.db || db;
 
-    return target.queryOne(sql, obj).then(function(r) {
-      for (var c in fetch) {
-        obj[useCamelCase ? camelCase(fetch[c]) : fetch[c]] = r[fetch[c]];
-      }
-      obj._generated_loaded = true;
-      return obj;
-    });
+    if (fetch.length > 0) {
+      return target.queryOne(sql, obj).then(function(r) {
+        for (var c in fetch) {
+          obj[useCamelCase ? camelCase(fetch[c]) : fetch[c]] = r[fetch[c]];
+        }
+        obj._generated_loaded = true;
+        return obj;
+      });
+    } else {
+      return target.nonQuery(sql, obj).then(function(c) {
+        if (c !== 1) new Error("Expected one row to be inserted rather than " + c + ".");
+
+        delete obj._generated_last_values;
+        obj._generated_last_values = _.cloneDeep(obj);
+        obj._generated_loaded = true;
+        return obj;
+      });
+    }
   };
   out.insert = function(obj, opts) { return ready.then(function() { return insert(obj, opts); }); };
 
@@ -271,23 +283,43 @@ module.exports = function(opts) {
     opts = opts || {};
     var sql = 'UPDATE "' + table + '" SET\n\t';
     var cols = [], cond = [], tmp = [], fetch = [];
-    var c, col, nm, tnm;
-    for (c in out.columns) {
-      col = out.columns[c];
-      tnm = nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
-      if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
+    var c, col, nm, tnm, last, params = obj;
+
+    if (out.keys.length > 0) {
+      for (c in out.columns) {
+        col = out.columns[c];
+        tnm = nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
+        if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
+          if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm, cast: col.cast });
+          // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
+          if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
+        } else {
+          if (optConcur.indexOf(col.name) >= 0) {
+            var v = concurVal(col.name);
+            tnm = '_generated_' + col.name;
+            obj[tnm] = v;
+            fetch.push({ name: nm, value: v });
+            cols.push({ name: col.name, value: tnm, cast: col.cast });
+          }
+          cond.push({ name: col.name, value: nm });
+        }
+      }
+    } else if (obj.hasOwnProperty('_generated_last_values') || opts.lastValues) {
+      last = opts.lastValues || obj._generated_last_values;
+      params = _.cloneDeep(obj);
+      for (c in out.columns) {
+        col = out.columns[c];
+        nm = last.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
+
+        // TODO: optimistic concurrency for keyless tables
         if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm, cast: col.cast });
         // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
         if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
-      } else {
-        if (optConcur.indexOf(col.name) >= 0) {
-          var v = concurVal(col.name);
-          tnm = '_generated_' + col.name;
-          obj[tnm] = v;
-          fetch.push({ name: nm, value: v });
-          cols.push({ name: col.name, value: tnm, cast: col.cast });
+
+        if (last.hasOwnProperty(nm)) {
+          cond.push({ name: col.name, value: '_last_' + nm });
+          params['_last_' + nm] = last[nm];
         }
-        cond.push({ name: col.name, value: nm });
       }
     }
 
@@ -300,19 +332,30 @@ module.exports = function(opts) {
     tmp = [];
     for (c in cond) {
       nm = cond[c].value;
-      if (obj[nm] === null || obj[nm] === undefined) tmp.push(ident(cond[c].name) + ' is null');
+      if (params[nm] === null || params[nm] === undefined) tmp.push(ident(cond[c].name) + ' is null');
       else tmp.push(ident(cond[c].name) + ' = $' + cond[c].value);
     }
     sql += tmp.join(' AND ') + ';';
 
     var target = opts.transaction || opts.db || db;
 
-    return target.nonQuery(sql, obj).then(function(rs) {
+    return target.nonQuery(sql, params).then(function(rs) {
       if (rs != 1) throw new Error('Wrong number of results. Expected 1. Got ' + rs + '.');
       var c;
       for (c in fetch) obj[fetch[c].name] = fetch[c].value;
       for (c in optConcur) {
         delete obj['_generated_' + optConcur[c]];
+      }
+
+      // keep last values up to date for keyless tables
+      if (out.keys.length === 0) {
+        delete obj._generated_last_values;
+        if (last) {
+          for (c in last) last[c] = obj[c];
+          obj._generated_last_values = last;
+        } else {
+          obj._generated_last_values = _.cloneDeep(obj);
+        }
       }
       return obj;
     });
@@ -333,7 +376,7 @@ module.exports = function(opts) {
   out.upsert = function(obj, opts) { return ready.then(function() { return upsert(obj, opts); }); };
 
   var del = function() {
-    var opts, target;
+    var opts, target, c, name;
     if (arguments.length < 1) return Promise.reject('Refusing to empty the ' + table + ' table.');
     if (typeof arguments[0] === 'string') {
       var q = norm(Array.prototype.concat('DELETE FROM ' + ident(table) + ' WHERE ' + arguments[0], Array.prototype.slice.call(arguments, 1)));
@@ -343,23 +386,47 @@ module.exports = function(opts) {
       var obj = arguments[0];
       opts = arguments[1] || {};
       var sql = 'DELETE FROM ' + ident(table) + ' WHERE\n\t';
-      var params = [];
-      for (var c in out.columns) {
-        c = out.columns[c];
-        if (c.pkey || optConcur.indexOf(c.name) > -1) {
-          if (params.length > 0) sql += ', ';
-          sql += ident(c.name) + ' = ?';
-          var name = obj.hasOwnProperty(c.name) ? c.name : camelCase(c.name);
-          params.push(obj[name]);
+      var params = [], hasQuery = false;
+
+      if (out.keys.length > 0) {
+        for (c in out.columns) {
+          c = out.columns[c];
+          name = obj.hasOwnProperty(c.name) ? c.name : camelCase(c.name);
+          if (out.keys.indexOf(c.name) > -1 || optConcur.indexOf(c.name) > -1) {
+            if (hasQuery) sql += ' AND ';
+            hasQuery = true;
+
+            if (obj[name] === null || obj[name] === undefined) sql += ident(c.name) + ' is null';
+            else {
+              sql += ident(c.name) + ' = ?';
+              params.push(obj[name]);
+            }
+          }
+        }
+      } else if (obj.hasOwnProperty('_generated_last_values') || opts.lastValues) {
+        var last = opts.lastValues || obj._generated_last_values;
+        for (c in out.columns) {
+          c = out.columns[c];
+          name = last.hasOwnProperty(c.name) ? c.name : camelCase(c.name);
+          if (last.hasOwnProperty(name)) {
+            if (hasQuery) sql += ' AND ';
+            hasQuery = true;
+
+            if (last[name] === null || last[name] === undefined) sql += ident(c.name) + ' is null';
+            else {
+              sql += ident(c.name) + ' = ?';
+              params.push(last[name]);
+            }
+          }
         }
       }
       sql += ';';
 
-      if (params.length < 1) return Promise.reject(new Error('Can\'t identify this object in the database.'));
+      if (!hasQuery) return Promise.reject(new Error('Can\'t identify this object in the database.'));
 
       var next = function*() {
         var count = yield db.nonQuery(sql, params);
-        if (count !== 1) throw new Error('Too many records deleted. Expected 1, tried to delete ' + count + '.');
+        if (count !== 1) throw new Error('Expected to delete 1 record, but instead tried to delete ' + count + '.');
         delete obj._generated_loaded;
         return count;
       };
@@ -416,7 +483,7 @@ module.exports = function(opts) {
       var lookup = cacheName(_.map(out.keys, function(k) { return rec[alias + k]; }));
       var cache = options.cache || {};
 
-      if (cache.hasOwnProperty(lookup)) res = cache[lookup];
+      if (lookup !== '' && cache.hasOwnProperty(lookup)) res = cache[lookup];
 
       if (!!!res) {
         res = out.new();
@@ -425,7 +492,10 @@ module.exports = function(opts) {
           col = out.columns[c].name;
           res[camelCase(col)] = rec[alias + col];
         }
-        cache[lookup] = res;
+
+        // cache the value if possible and save the current values if not, since it's a keyless table
+        if (lookup !== '') cache[lookup] = res;
+        else res._generated_last_values = _.cloneDeep(res);
       }
 
       // run any extra handlers
