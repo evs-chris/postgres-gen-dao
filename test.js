@@ -6,6 +6,7 @@ global.Promise = require('when/es6-shim/Promise');
 
 var should = require('should');
 if (should) ; // - jshint shalt not whine about should being unused
+var assert = require('assert');
 var mod = require('./');
 var pg = require('postgres-gen');
 var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_test', password: 'postgres_gen_test' });
@@ -135,6 +136,15 @@ describe('upserts, inserts, and updates', function() {
       i._generated_last_values.str.should.equal('foo');
       i = yield keylessDao.update(i);
       i._generated_last_values.str.should.equal('bar');
+    }).then(done, done);
+  });
+
+  it('should replace empty string params for non-string fields with null', function(done) {
+    db.transaction(function*(t) {
+      var rec = yield keylessDao.insert({ num: '', str: 'asdf' }, { transaction: t });
+      rec = yield keylessDao.findOne('str = ?', 'asdf', { transaction: t });
+      assert(rec.num === null, 'num should be null');
+      yield keylessDao.delete(rec, { transaction: t });
     }).then(done, done);
   });
 });

@@ -27,9 +27,9 @@ var registry = {};
 var tableAliases = /@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s(?:(?!\s*(?:on|where)\s)\s*(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?)?/gi;
 var fieldAliases = /@:?"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?\."?([a-zA-Z_]+[a-zA-Z0-9_]+|\*)"?/gi;
 
-function qlToQuery(params) {
+var qlToQuery = function(params) {
   params = params || {};
-  var daoCache = registry[params.db.connectionString()];
+  var daoCache = this.registry;
   var query = params.query || '';
   var tables = {};
   var exclude = params.exclude || {};
@@ -64,7 +64,7 @@ function qlToQuery(params) {
     query: sql,
     aliases: tables
   };
-}
+};
 
 var gopts = {
   camelCase: true,
@@ -80,6 +80,7 @@ module.exports = function(opts) {
   var out = opts.target || {};
   var db = opts.db;
   var useCamelCase = (opts.hasOwnProperty('camelCase') ? opts.camelCase : (gopts.hasOwnProperty('camelCase') ? gopts.camelCase : true));
+  var emptyStringToNull = (opts.hasOwnProperty('emptyStringToNull') ? opts.emptyStringToNull : (gopts.hasOwnProperty('emptyStringToNull') ? gopts.emptyStringToNull : true));
   var concurrency = opts.optimisticConcurrency || {};
   var gconcurrency = gopts.optimisticConcurrency || {};
   var optConcur = concurrency.columns || gconcurrency.columns || [];
@@ -90,9 +91,12 @@ module.exports = function(opts) {
   // always start unloaded
   out.prototype._generated_loaded = false;
 
-  if (!(opts.hasOwnProperty('skipRegistry') ? opts.skipRegistry : false)) {
-    var daoCache = registry[db.connectionString()] || {};
-    registry[db.connectionString()] = daoCache;
+  if (opts.skipCache !== true) {
+    var daoCache = out.registry = opts.registry;
+    if (!daoCache) {
+      daoCache = out.registry = registry[db.connectionString()] || {};
+      registry[db.connectionString()] = daoCache;
+    }
     if (daoCache.hasOwnProperty(table)) {
       return daoCache[table];
     }
@@ -202,7 +206,7 @@ module.exports = function(opts) {
     var args = Array.prototype.slice.call(arguments, 0);
     var q = pg.normalizeQueryArguments(args);
     q.options = q.options || {};
-    var qs = qlToQuery({ db: db, query: q.query, exclude: q.options.exclude });
+    var qs = qlToQuery.call(this, { db: db, query: q.query, exclude: q.options.exclude });
     var k, fetch, found = false;
     q.query = qs.query;
 
@@ -235,6 +239,7 @@ module.exports = function(opts) {
   };
   out.query = function() { var args = arguments; return ready.then(function() { return query.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
+  var stringType = /char|text/i;
   var insert = function(obj, opts) {
     opts = opts || {};
     var sql = 'INSERT INTO "' + table + '" (\n\t';
@@ -245,7 +250,8 @@ module.exports = function(opts) {
       nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
       if (obj.hasOwnProperty(nm)) {
         cols.push(ident(col.name));
-        params.push('$' + nm + (!!c.cast ? '::' + c.cast : ''));
+        if (obj[nm] === '' && !stringType.test(col.type) && emptyStringToNull) params.push('null');
+        else params.push('$' + nm + (!!c.cast ? '::' + c.cast : ''));
       } else if (col.elidable) {
         fetch.push(col.name);
       } else throw new Error('Missing non-elidable column ' + col.name + '.');
@@ -290,7 +296,7 @@ module.exports = function(opts) {
         col = out.columns[c];
         tnm = nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
         if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
-          if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm, cast: col.cast });
+          if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: (obj[nm] === '' && !stringType.test(col.type) && emptyStringToNull) ? 'null' : '$' + nm, cast: col.cast });
           // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
           if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
         } else {
@@ -299,7 +305,7 @@ module.exports = function(opts) {
             tnm = '_generated_' + col.name;
             obj[tnm] = v;
             fetch.push({ name: nm, value: v });
-            cols.push({ name: col.name, value: tnm, cast: col.cast });
+            cols.push({ name: col.name, value: '$' + tnm, cast: col.cast });
           }
           cond.push({ name: col.name, value: nm });
         }
@@ -312,7 +318,7 @@ module.exports = function(opts) {
         nm = last.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
 
         // TODO: optimistic concurrency for keyless tables
-        if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: nm, cast: col.cast });
+        if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: '$' + nm, cast: col.cast });
         // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
         if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
 
@@ -325,7 +331,7 @@ module.exports = function(opts) {
 
     if (cols.length === 0) throw new Error('Update called for object with no data to update.');
 
-    for (c in cols) { tmp.push(ident(cols[c].name) + ' = $' + cols[c].value + (!!cols[c].cast ? '::' + cols[c].cast : '')); }
+    for (c in cols) { tmp.push(ident(cols[c].name) + ' = ' + cols[c].value + (!!cols[c].cast ? '::' + cols[c].cast : '')); }
     sql += tmp.join(', ');
     sql += '\nWHERE\n\t';
 

@@ -1,8 +1,8 @@
 {
   "name": "postgres-gen-dao",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "A simple DAO library built on postgres-gen and pg.",
-  "homepage": "https://github.com/evs-chris/node-postgres-gen-dao",
+  "homepage": "https://github.com/evs-chris/postgres-gen-dao",
   "license": "MIT",
   "author": { "name": "Chris Reeves" },
   "main": "index.js",
