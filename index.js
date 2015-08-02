@@ -128,7 +128,7 @@ module.exports = function(opts) {
     return out.columns;
   });
 
-  var ready = columns.then(function(cols) {
+  var ready = out.ready = columns.then(function(cols) {
     var arr = [];
     for (var c in cols) {
       if (!!cols[c].pkey) arr.push(cols[c].name);
@@ -144,6 +144,7 @@ module.exports = function(opts) {
     out.upsert = upsert;
     out.delete = del;
     out.load = load;
+    return out;
   });
 
   out.db = db;
