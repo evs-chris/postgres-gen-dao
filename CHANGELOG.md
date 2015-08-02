@@ -1,3 +1,7 @@
+## 0.12.0
+
+* Expose `DAO.ready` promise to allow consumers to wait for the DAO to be fully initialized.
+
 ## 0.11.0
 
 * __BUG:__ Fixes support for loading records from a keyless table.
