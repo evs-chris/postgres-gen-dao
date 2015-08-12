@@ -1,6 +1,16 @@
-## 0.12.0
+## 0.14.0
+
+* Adds aliases `trans` and `t` for the `transaction` option.
+* Adjusts the way upserts for non-loaded objects are handled from completely broken to update if keys and optimistic concurrency fields are present.
+
+## 0.13.0
 
 * Expose `DAO.ready` promise to allow consumers to wait for the DAO to be fully initialized.
+
+## 0.12.0
+
+* Adds support for controlling the DAO cache.
+* Adds support for converting empty strings to nulls for non-string fields.
 
 ## 0.11.0
 

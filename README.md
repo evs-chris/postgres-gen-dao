@@ -80,6 +80,8 @@ Any `options` keys that match an alias will be automatically included in the fet
 
 If an `exclude` map is provided, any fields for a table's alias in the exclude array will not be included in the `SELECT` statement. The keys of the map must match `@` referenced tables, e.g. `dao.query('select @t.* from @foo t;', {}, { exclude: { t: [ 'big_array_blob_field' ] } });`. In this example, the `big_array_blob_field` will not be included in the list of the `t.*` fields.
 
+A `transaction` option may be specified to make sure that this query participates in the given transaction. There are also aliases for `trans` and `t` that can be used conveniently with ES6 object literal e.g. `db.transaction(function*(t) { return yield dao.query('select * from foos;', { t }); } )`.
+
 ### `find|findOne( [ conditions ], [ parameters ], [ options ] )`
 
 Both find and findOne take the same parameters. The only difference is findOne will throw if more than one result, which would otherwise be returned directly, is returned.
@@ -87,3 +89,20 @@ Both find and findOne take the same parameters. The only difference is findOne w
 #### `options`
 
 `exclude` - an array of column names to exclude from the query.
+`transaction` - may be specified to make sure that this query participates in the given transaction. There are also aliases for `trans` and `t` that can be used conveniently with ES6 object literal e.g. `db.transaction(function*(t) { return yield dao.query('select * from foos;', { t }); } )`.
+
+### `insert( object, [ options ] )`
+
+### `update( object, [ options ] )`
+
+### `upsert( object, [ options ] )`
+
+If the internal generated flag is set on the object from a load, an update will be triggerd. If the given object has its primary key and optimistic concurrency fields present, an updated will be triggered. Otherwise, and insert will be triggered.
+
+### `delete( object, [ options ] )`
+
+Deletes the given object. If more than one record is deleted, the transaction will abort.
+
+### `delete( conditions, [ options ] )`
+
+Deletes all of the records that match the given conditions and returns the deleted record count.
