@@ -173,7 +173,7 @@ module.exports = function(opts) {
 
     q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
 
-    var target = q.options.transaction || q.options.db || db;
+    var target = q.options.transaction || q.options.trans || q.options.t || q.options.db || db;
 
     return target.query(q).then(function(rs) {
       var cache = {};
@@ -195,7 +195,7 @@ module.exports = function(opts) {
 
     q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
 
-    var target = q.options.transaction || q.options.db || db;
+    var target = q.options.transaction || q.options.trans || q.options.t || q.options.db || db;
 
     return target.queryOne(q).then(function(rs) {
       return out.load(rs);
@@ -227,7 +227,7 @@ module.exports = function(opts) {
     for (k in qs.aliases) if (qs.aliases[k] === out) q.options.alias = k;
     q.options.aliases = qs.aliases;
 
-    var target = q.options.transaction || q.options.db || db;
+    var target = q.options.transaction || q.options.trans || q.options.t || q.options.db || db;
 
     return target.query(q).then(function(rs) {
       q.options.cache = {};
@@ -263,7 +263,7 @@ module.exports = function(opts) {
     if (fetch.length > 0)
       sql += ' RETURNING ' + fetch.join(', ') + ';';
 
-    var target = opts.transaction || opts.db || db;
+    var target = opts.transaction || opts.trans || opts.t || opts.db || db;
 
     if (fetch.length > 0) {
       return target.queryOne(sql, obj).then(function(r) {
@@ -344,7 +344,7 @@ module.exports = function(opts) {
     }
     sql += tmp.join(' AND ') + ';';
 
-    var target = opts.transaction || opts.db || db;
+    var target = opts.transaction || opts.trans || opts.t || opts.db || db;
 
     return target.nonQuery(sql, params).then(function(rs) {
       if (rs != 1) throw new Error('Wrong number of results. Expected 1. Got ' + rs + '.');
@@ -387,7 +387,7 @@ module.exports = function(opts) {
     if (arguments.length < 1) return Promise.reject('Refusing to empty the ' + table + ' table.');
     if (typeof arguments[0] === 'string') {
       var q = norm(Array.prototype.concat('DELETE FROM ' + ident(table) + ' WHERE ' + arguments[0], Array.prototype.slice.call(arguments, 1)));
-      target = q.options.transaction || q.options.db || db;
+      target = q.options.transaction || q.options.trans || q.options.t || q.options.db || db;
       return target.nonQuery(q);
     } else if (arguments[0].hasOwnProperty('_generated_loaded')) {
       var obj = arguments[0];
@@ -438,8 +438,7 @@ module.exports = function(opts) {
         return count;
       };
 
-      if (opts.transaction) return opts.transaction.transaction(next);
-      else return (opts.db || db).transaction(next);
+      return (opts.transaction || opts.trans || opts.t || opts.db || db).transaction(next);
     }
   };
   out.delete = out.del = function() { var args = arguments; return ready.then(function() { return del.call(out, Array.prototype.slice.call(args, 0)); }); };
