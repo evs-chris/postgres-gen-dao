@@ -129,12 +129,12 @@ module.exports = function(opts) {
   });
 
   var ready = out.ready = columns.then(function(cols) {
-    var arr = [];
+    out.keys = [];
+
     for (var c in cols) {
-      if (!!cols[c].pkey) arr.push(cols[c].name);
+      if (!!cols[c].pkey) out.keys.push(cols[c].name);
     }
-    arr.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
-    out.keys = arr;
+    out.keys.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
 
     out.find = find;
     out.findOne = findOne;
@@ -372,10 +372,22 @@ module.exports = function(opts) {
   var upsert = function(obj, opts) {
     if (!!obj._generated_loaded) return out.update(obj, opts);
     else {
-      var res = true, cols = out.columns;
-      for (var i = 0; res && i < cols.length; i++) {
-        if (!!!cols[i].elidable || !obj.hasOwnProperty(cols[i].name)) res = false;
+      var i, res = true, keys = out.keys;
+
+      if (keys.length === 0) {
+        // upserting is not supported on keyless tables
+        res = false;
+      } else {
+        // check for missing keys
+        for (i = 0; res && i < keys.length; i++) {
+          if (!obj.hasOwnProperty(camelCase(keys[i]))) res = false;
+        }
+
+        for (i = 0; res && i < optConcur.length; i++) {
+          if (!obj.hasOwnProperty(camelCase(optConcur[i]))) res = false;
+        }
       }
+
       if (res) return out.update(obj, opts);
       else return out.insert(obj, opts);
     }

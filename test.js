@@ -11,7 +11,7 @@ var mod = require('./');
 var pg = require('postgres-gen');
 var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_test', password: 'postgres_gen_test' });
 
-var dao, otherDao, keylessDao;
+var dao, otherDao, keylessDao, optimistDao;
 var proto = { foo: true };
 
 var stmts = [];
@@ -22,15 +22,19 @@ before(function(done) {
     yield db.nonQuery('drop table if exists test;');
     yield db.nonQuery('drop table if exists other;');
     yield db.nonQuery('drop table if exists keyless;');
+    yield db.nonQuery('drop table if exists optimist;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
     yield db.nonQuery('create table keyless (str varchar, flag boolean, num integer);');
+    yield db.nonQuery('create table optimist (id bigserial primary key, name varchar, updated_at timestamptz not null default CURRENT_TIMESTAMP(3));');
     dao = mod({ db: db, table: 'test', prototype: proto });
     otherDao = mod({ db: db, table: 'other' });
     keylessDao = mod({ db: db, table: 'keyless' });
+    optimistDao = mod({ db: db, table: 'optimist' });
     (yield dao.find()).length.should.equal(0);
     (yield otherDao.find()).length.should.equal(0);
     (yield keylessDao.find()).length.should.equal(0);
+    (yield optimistDao.find()).length.should.equal(0);
     dao.columns.length.should.equal(3);
   }).then(done, done);
 });
@@ -95,6 +99,17 @@ describe('upserts, inserts, and updates', function() {
       i = yield dao.findOne('id = ?', 1);
       i.name.should.equal('Larry');
       i.email.should.equal('larry@perl.org');
+    }).then(done, done);
+  });
+
+  it('should update existing records for update with id and optimistic concurrency field', function(done) {
+    db.transaction(function*() {
+      var i = yield optimistDao.upsert({ name: 'Joe' });
+      i.id.should.equal('1');
+      i.name.should.equal('Joe');
+      i = yield optimistDao.upsert({ id: i.id, updatedAt: i.updatedAt, name: 'George' });
+      i.id.should.equal('1');
+      i.name.should.equal('George');
     }).then(done, done);
   });
 
