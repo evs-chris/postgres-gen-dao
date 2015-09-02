@@ -5,13 +5,12 @@
 global.Promise = require('when/es6-shim/Promise');
 
 var should = require('should');
-if (should) ; // - jshint shalt not whine about should being unused
 var assert = require('assert');
 var mod = require('./');
 var pg = require('postgres-gen');
 var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_test', password: 'postgres_gen_test' });
 
-var dao, otherDao, keylessDao, optimistDao;
+var dao, otherDao, thirdDao, keylessDao, optimistDao;
 var proto = { foo: true };
 
 var stmts = [];
@@ -21,14 +20,17 @@ before(function(done) {
   db.transaction(function*() {
     yield db.nonQuery('drop table if exists test;');
     yield db.nonQuery('drop table if exists other;');
+    yield db.nonQuery('drop table if exists third;');
     yield db.nonQuery('drop table if exists keyless;');
     yield db.nonQuery('drop table if exists optimist;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
+    yield db.nonQuery('create table third (id bigserial primary key, other_id bigint, value varchar);');
     yield db.nonQuery('create table keyless (str varchar, flag boolean, num integer);');
     yield db.nonQuery('create table optimist (id bigserial primary key, name varchar, updated_at timestamptz not null default CURRENT_TIMESTAMP(3));');
     dao = mod({ db: db, table: 'test', prototype: proto });
     otherDao = mod({ db: db, table: 'other' });
+    thirdDao = mod({ db: db, table: 'third' });
     keylessDao = mod({ db: db, table: 'keyless' });
     optimistDao = mod({ db: db, table: 'optimist' });
     (yield dao.find()).length.should.equal(0);
@@ -40,7 +42,7 @@ before(function(done) {
 });
 
 after(function(done) {
-  db.nonQuery('drop table test; drop table other; drop table keyless;').then(function() { done(); }, done);
+  db.nonQuery('drop table test; drop table other; drop table third; drop table keyless; drop table optimist;').then(function() { done(); }, done);
 });
 
 describe('dao object prototypes', function() {
@@ -230,6 +232,20 @@ describe('finding', function() {
       ks[0].str.should.equal('bar');
       ks[1].str.should.equal('foo');
     }).then(done, done);
+  });
+
+  describe('fetching', function() {
+    it('should properly fetch associated records', function(done) {
+      db.transaction(function*(t) {
+        yield thirdDao.insert({ value: 'first third', other_id: 1 });
+        let rs = yield dao.query('select t.*, @others.*, @last.* from test t left join @other others on others.test_id = t.id left join @third last on last.other_id = others.id where t.id = 1', { fetch: { others: [{ last: '' }] }, t });
+        let os = yield otherDao.find('test_id = 1');
+        rs.length.should.equal(1);
+        rs[0].others.length.should.equal(os.length);
+        rs[0].others[0].last.id.should.equal('1');
+        should.equal(rs[0].others[1].last, undefined);
+      }).then(done, done);
+    });
   });
 });
 
