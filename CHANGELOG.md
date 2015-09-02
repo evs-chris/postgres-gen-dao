@@ -1,3 +1,7 @@
+## 0.14.1
+
+* __BUG:__ Fix fetching of objects nested in arrays (complex to-many associations).
+
 ## 0.14.0
 
 * Adds aliases `trans` and `t` for the `transaction` option.
