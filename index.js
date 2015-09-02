@@ -484,7 +484,7 @@ module.exports = function(opts) {
           if (!!res) target[k] = res;
         } else if (Array.isArray(v) && v.length <= 1) { // one-to-many
           if (!!!target[k] || !Array.isArray(target[k])) target[k] = [];
-          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v[1], extra: extra });
+          res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v[0], extra: extra });
           if (!!res) target[k].push(res);
         } else if (typeof v === 'object') { // one-to-one complex
           res = dao.load(rec, { cache: cache, aliases: aliases, alias: k, fetch: v, extra: extra });
