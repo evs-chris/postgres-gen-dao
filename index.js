@@ -165,15 +165,11 @@ module.exports = function(opts) {
     else return Object.create(out.prototype);
   };
 
-  var find = function(conditions) {
-    var args = Array.prototype.slice.call(arguments, 0);
-    var hasCond = typeof conditions === 'string';
-    if (!args[0]) args[0] = '';
-    else if (!hasCond) args.unshift('');
-
-    var q = norm(args);
+  var find = function() {
+    var q = norm(arguments);
     q.options.exclude = q.options.exclude || [];
 
+    var hasCond = true;
     if (noText.test(q.query)) hasCond = false;
 
     q.query = 'SELECT ' + this.columns.
@@ -193,15 +189,11 @@ module.exports = function(opts) {
   };
   out.find = function() { var args = arguments; return ready.then(function() { return find.apply(out, Array.prototype.slice.call(args, 0)); }); };
 
-  var findOne = function(conditions) {
-    var args = Array.prototype.slice.call(arguments, 0);
-    var hasCond = typeof conditions === 'string';
-    if (!args[0]) args[0] = '';
-    else if (!hasCond) args.unshift('');
-
-    var q = norm(args);
+  var findOne = function() {
+    var q = norm(arguments);
     q.options.exclude = q.options.exclude || [];
 
+    var hasCond = true;
     if (noText.test(q.query)) hasCond = false;
 
     q.query = 'SELECT ' + this.columns.
@@ -220,7 +212,7 @@ module.exports = function(opts) {
 
   var query = function(/*ql, [params], [options]*/) {
     var args = Array.prototype.slice.call(arguments, 0);
-    var q = pg.normalizeQueryArguments(args);
+    var q = norm(args);
     q.options = q.options || {};
     var qs = qlToQuery.call(this, { db: db, query: q.query, exclude: q.options.exclude });
     var k, fetch, found = false;

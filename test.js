@@ -320,6 +320,13 @@ describe('finding', function() {
     }).then(done, done);
   });
 
+  it('should handle apply-like queries', function(done) {
+    db.transaction(function*(t) {
+      var ts = yield dao.find(['id = ?', 1, { t: t}]);
+      ts.length.should.equal(1);
+    }).then(done, done);
+  });
+
   describe('fetching', function() {
     it('should properly fetch associated records', function(done) {
       db.transaction(function*(t) {
