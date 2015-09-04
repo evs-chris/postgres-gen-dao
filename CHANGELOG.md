@@ -1,3 +1,7 @@
+## 0.16.0
+
+* Adds support for latest `postgres-gen` query normalization.
+
 ## 0.15.1
 
 * `find` and `findOne` conditions now properly handle:

@@ -1,6 +1,6 @@
 {
   "name": "postgres-gen-dao",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "A simple DAO library built on postgres-gen and pg.",
   "homepage": "https://github.com/evs-chris/postgres-gen-dao",
   "license": "MIT",
