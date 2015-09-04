@@ -1,3 +1,7 @@
+## 0.15.0
+
+* __BREAKING BUG:__ JSON columns will now have their values stringified prior to being used in an insert or update. This means that all valid JSON types can be used directly. If you were working around this bug by pre-stringifying, you should stop doing so or you will be inserting string literals into the database instead of JSON.
+
 ## 0.14.1
 
 * __BUG:__ Fix fetching of objects nested in arrays (complex to-many associations).
