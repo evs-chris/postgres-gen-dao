@@ -16,6 +16,13 @@ var proto = { foo: true };
 var stmts = [];
 db.log(function(m) { stmts.push(m); });
 
+function logerr(then) {
+  return function(err) {
+    console.log(err);
+    then(err);
+  };
+}
+
 before(function(done) {
   db.transaction(function*() {
     yield db.nonQuery('drop table if exists test;');
@@ -25,7 +32,7 @@ before(function(done) {
     yield db.nonQuery('drop table if exists optimist;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
-    yield db.nonQuery('create table third (id bigserial primary key, other_id bigint, value varchar);');
+    yield db.nonQuery('create table third (id bigserial primary key, other_id bigint, value varchar, stuff json);');
     yield db.nonQuery('create table keyless (str varchar, flag boolean, num integer);');
     yield db.nonQuery('create table optimist (id bigserial primary key, name varchar, updated_at timestamptz not null default CURRENT_TIMESTAMP(3));');
     dao = mod({ db: db, table: 'test', prototype: proto });
@@ -164,6 +171,64 @@ describe('upserts, inserts, and updates', function() {
       yield keylessDao.delete(rec, { transaction: t });
     }).then(done, done);
   });
+
+  it('should properly handle non-object json on insert', function(done) {
+    db.transaction(function*(t) {
+      yield thirdDao.insert({ value: 'one', stuff: [1, 2, 3] }, { t: t });
+      yield thirdDao.insert({ value: 'two', stuff: 'str' }, { t: t });
+      yield thirdDao.insert({ value: 'three', stuff: 15.2 }, { t: t });
+      yield thirdDao.insert({ value: 'four', stuff: false }, { t: t });
+      yield thirdDao.insert({ value: 'five', stuff: null }, { t: t });
+
+      var one = yield thirdDao.findOne('value = ?', 'one', { t: t });
+      var two = yield thirdDao.findOne('value = ?', 'two', { t: t });
+      var three = yield thirdDao.findOne('value = ?', 'three', { t: t });
+      var four = yield thirdDao.findOne('value = ?', 'four', { t: t });
+      var five = yield thirdDao.findOne('value = ?', 'five', { t: t });
+
+      one.stuff[0].should.equal(1);
+      two.stuff.should.equal('str');
+      three.stuff.should.equal(15.2);
+      four.stuff.should.equal(false);
+      should.equal(five.stuff, null);
+    }).then(done, logerr(done));
+  });
+
+  it('should properly handle non-object json on update', function(done) {
+    db.transaction(function*(t) {
+      var one = yield thirdDao.findOne('value = ?', 'one', { t: t });
+      var two = yield thirdDao.findOne('value = ?', 'two', { t: t });
+      var three = yield thirdDao.findOne('value = ?', 'three', { t: t });
+      var four = yield thirdDao.findOne('value = ?', 'four', { t: t });
+      var five = yield thirdDao.findOne('value = ?', 'five', { t: t });
+
+      one.stuff = [4, 5, 6];
+      yield thirdDao.update(one, { t: t });
+      one = yield thirdDao.findOne('value = ?', 'one', { t: t });
+
+      two.stuff = 'rts';
+      yield thirdDao.update(two, { t: t });
+      two = yield thirdDao.findOne('value = ?', 'two', { t: t });
+
+      three.stuff = 99.1;
+      yield thirdDao.update(three, { t: t });
+      three = yield thirdDao.findOne('value = ?', 'three', { t: t });
+
+      four.stuff = true;
+      yield thirdDao.update(four, { t: t });
+      four = yield thirdDao.findOne('value = ?', 'four', { t: t });
+
+      five.stuff = null;
+      yield thirdDao.update(five, { t: t });
+      five = yield thirdDao.findOne('value = ?', 'five', { t: t });
+
+      one.stuff[0].should.equal(4);
+      two.stuff.should.equal('rts');
+      three.stuff.should.equal(99.1);
+      four.stuff.should.equal(true);
+      should.equal(five.stuff, null);
+    }).then(done, logerr(done));
+  });
 });
 
 describe('finding', function() {
@@ -240,9 +305,10 @@ describe('finding', function() {
         yield thirdDao.insert({ value: 'first third', other_id: 1 });
         let rs = yield dao.query('select t.*, @others.*, @last.* from test t left join @other others on others.test_id = t.id left join @third last on last.other_id = others.id where t.id = 1', { fetch: { others: [{ last: '' }] }, t });
         let os = yield otherDao.find('test_id = 1');
+        let ts = yield thirdDao.find('other_id = ?', os[0].id);
         rs.length.should.equal(1);
         rs[0].others.length.should.equal(os.length);
-        rs[0].others[0].last.id.should.equal('1');
+        rs[0].others[0].last.id.should.equal(ts[0].id);
         should.equal(rs[0].others[1].last, undefined);
       }).then(done, done);
     });

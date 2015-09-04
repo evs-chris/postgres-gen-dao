@@ -123,6 +123,8 @@ module.exports = function(opts) {
       // if the type starts with _, it is an array and should be cast automagically
       if (!!casts[c.name]) c.cast = casts[c.name];
       else if (c.type.indexOf('_') === 0) c.cast = c.type;
+
+      if (c.type.toLowerCase().indexOf('json') !== -1) c.json = true;
     });
     log.trace('columns for %s are %j', table, out.columns);
     return out.columns;
@@ -244,15 +246,17 @@ module.exports = function(opts) {
   var insert = function(obj, opts) {
     opts = opts || {};
     var sql = 'INSERT INTO "' + table + '" (\n\t';
-    var cols = [], params = [], fetch = [];
+    var cols = [], params = [], fetch = [], tmp = _.cloneDeep(obj);
     var c, col, nm, columns = out.columns;
     for (c in columns) {
       col = columns[c];
-      nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
-      if (obj.hasOwnProperty(nm)) {
+      nm = tmp.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
+      if (tmp.hasOwnProperty(nm)) {
         cols.push(ident(col.name));
-        if (obj[nm] === '' && !stringType.test(col.type) && emptyStringToNull) params.push('null');
+        if (tmp[nm] === '' && !stringType.test(col.type) && emptyStringToNull) params.push('null');
         else params.push('$' + nm + (!!c.cast ? '::' + c.cast : ''));
+
+        if (col.json && !col.cast) tmp[nm] = JSON.stringify(tmp[nm]);
       } else if (col.elidable) {
         fetch.push(col.name);
       } else throw new Error('Missing non-elidable column ' + col.name + '.');
@@ -266,7 +270,7 @@ module.exports = function(opts) {
     var target = opts.transaction || opts.trans || opts.t || opts.db || db;
 
     if (fetch.length > 0) {
-      return target.queryOne(sql, obj).then(function(r) {
+      return target.queryOne(sql, tmp).then(function(r) {
         for (var c in fetch) {
           obj[useCamelCase ? camelCase(fetch[c]) : fetch[c]] = r[fetch[c]];
         }
@@ -290,38 +294,41 @@ module.exports = function(opts) {
     opts = opts || {};
     var sql = 'UPDATE "' + table + '" SET\n\t';
     var cols = [], cond = [], tmp = [], fetch = [];
-    var c, col, nm, tnm, last, params = obj;
+    var c, col, nm, tnm, last, params = _.cloneDeep(obj);
 
     if (out.keys.length > 0) {
       for (c in out.columns) {
         col = out.columns[c];
-        tnm = nm = obj.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
+        tnm = nm = params.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
         if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
-          if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: (obj[nm] === '' && !stringType.test(col.type) && emptyStringToNull) ? 'null' : '$' + nm, cast: col.cast });
+          if (params.hasOwnProperty(nm)) cols.push({ name: col.name, value: (params[nm] === '' && !stringType.test(col.type) && emptyStringToNull) ? 'null' : '$' + nm, cast: col.cast });
+
+          if (col.json) params[nm] = JSON.stringify(params[nm]);
           // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
-          if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
+          else if (Array.isArray(params[nm])) params[nm].literalArray = true;
         } else {
           if (optConcur.indexOf(col.name) >= 0) {
             var v = concurVal(col.name);
             tnm = '_generated_' + col.name;
-            obj[tnm] = v;
+            params[tnm] = v;
             fetch.push({ name: nm, value: v });
             cols.push({ name: col.name, value: '$' + tnm, cast: col.cast });
           }
           cond.push({ name: col.name, value: nm });
         }
       }
-    } else if (obj.hasOwnProperty('_generated_last_values') || opts.lastValues) {
-      last = opts.lastValues || obj._generated_last_values;
-      params = _.cloneDeep(obj);
+    } else if (params.hasOwnProperty('_generated_last_values') || opts.lastValues) {
+      last = opts.lastValues || params._generated_last_values;
       for (c in out.columns) {
         col = out.columns[c];
         nm = last.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
 
         // TODO: optimistic concurrency for keyless tables
-        if (obj.hasOwnProperty(nm)) cols.push({ name: col.name, value: '$' + nm, cast: col.cast });
+        if (params.hasOwnProperty(nm)) cols.push({ name: col.name, value: '$' + nm, cast: col.cast });
+
+        if (col.json) params[nm] = JSON.stringify(params[nm]);
         // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
-        if (Array.isArray(obj[nm])) obj[nm].literalArray = true;
+        else if (Array.isArray(params[nm])) params[nm].literalArray = true;
 
         if (last.hasOwnProperty(nm)) {
           cond.push({ name: col.name, value: '_last_' + nm });
