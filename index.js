@@ -26,6 +26,7 @@ function ident(name) {
 var registry = {};
 var tableAliases = /@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s(?:(?!\s*(?:on|where)\s)\s*(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?)?/gi;
 var fieldAliases = /@:?"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?\."?([a-zA-Z_]+[a-zA-Z0-9_]+|\*)"?/gi;
+var startsWithOrder = /^\s*order\s+/i, startsWithWhere = /^\s*where\s+/i, noText = /^\s*$/;
 
 var qlToQuery = function(params) {
   params = params || {};
@@ -173,7 +174,13 @@ module.exports = function(opts) {
     var q = norm(args);
     q.options.exclude = q.options.exclude || [];
 
-    q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
+    if (noText.test(q.query)) hasCond = false;
+
+    q.query = 'SELECT ' + this.columns.
+      filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).
+      map(function(c) { return ident(c.name); }).join(', ') +
+        ' FROM ' + ident(table) +
+        (hasCond ? (!startsWithOrder.test(q.query) && !startsWithWhere.test(q.query) ? ' WHERE ' : ' ') + q.query : '') + ';';
 
     var target = q.options.transaction || q.options.trans || q.options.t || q.options.db || db;
 
@@ -195,7 +202,13 @@ module.exports = function(opts) {
     var q = norm(args);
     q.options.exclude = q.options.exclude || [];
 
-    q.query = 'SELECT ' + this.columns.filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).map(function(c) { return ident(c.name); }).join(', ') + ' FROM ' + ident(table) + (hasCond ? ' WHERE ' + q.query : '') + ';';
+    if (noText.test(q.query)) hasCond = false;
+
+    q.query = 'SELECT ' + this.columns.
+      filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).
+      map(function(c) { return ident(c.name); }).join(', ') +
+        ' FROM ' + ident(table) +
+        (hasCond ? (!startsWithOrder.test(q.query) && !startsWithWhere.test(q.query) ? ' WHERE ' : ' ') + q.query : '') + ';';
 
     var target = q.options.transaction || q.options.trans || q.options.t || q.options.db || db;
 

@@ -292,10 +292,31 @@ describe('finding', function() {
 
   it('should be able to properly find records in a keyless table', function(done) {
     db.transaction(function*() {
-      var ks = yield keylessDao.find('1 = 1 order by num asc');
+      var ks = yield keylessDao.find('order by num asc');
       ks.length.should.equal(2);
       ks[0].str.should.equal('bar');
       ks[1].str.should.equal('foo');
+    }).then(done, done);
+  });
+
+  it('should handle order only queries', function(done) {
+    db.transaction(function*() {
+      var ts = yield dao.find('order by id desc');
+      ts[0].id.should.equal('' + ts.length);
+    }).then(done, done);
+  });
+
+  it('should handle queries that start with "where"', function(done) {
+    db.transaction(function*() {
+      var ts = yield dao.find('where id = ?', 1);
+      ts[0].id.should.equal('1');
+    }).then(done, done);
+  });
+
+  it('should handle queries that are just randomw whitespace', function(done) {
+    db.transaction(function*() {
+      var ts = yield dao.find('  \t\n\n\r \n');
+      ts.length.should.be.greaterThan(1);
     }).then(done, done);
   });
 
