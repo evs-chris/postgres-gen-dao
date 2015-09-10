@@ -1,3 +1,7 @@
+## 0.16.1
+
+* __BUG:__ Buffers are no longer mangled beyond recognition on insert and update. This started with `0.15.0`.
+
 ## 0.16.0
 
 * Adds support for latest `postgres-gen` query normalization.
