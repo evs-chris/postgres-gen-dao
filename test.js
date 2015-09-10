@@ -1,6 +1,6 @@
 "use strict";
 
-/* global before, after, it, describe */
+/* global before, after, it, describe, Buffer */
 
 global.Promise = require('when/es6-shim/Promise');
 
@@ -32,7 +32,7 @@ before(function(done) {
     yield db.nonQuery('drop table if exists optimist;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
-    yield db.nonQuery('create table third (id bigserial primary key, other_id bigint, value varchar, stuff json);');
+    yield db.nonQuery('create table third (id bigserial primary key, other_id bigint, value varchar, stuff json, bob bytea);');
     yield db.nonQuery('create table keyless (str varchar, flag boolean, num integer);');
     yield db.nonQuery('create table optimist (id bigserial primary key, name varchar, updated_at timestamptz not null default CURRENT_TIMESTAMP(3));');
     dao = mod({ db: db, table: 'test', prototype: proto });
@@ -229,6 +229,24 @@ describe('upserts, inserts, and updates', function() {
       should.equal(five.stuff, null);
     }).then(done, logerr(done));
   });
+
+  it('should not destroy buffers on insert', function(done) {
+    db.transaction(function*(t) {
+      var f = yield thirdDao.insert({ value: 'Frank', bob: new Buffer('abc', 'utf8') }, { t: t });
+      f = yield thirdDao.findOne('value = ?', 'Frank', { t: t });
+      f.bob[0].should.equal(97);
+    }).then(done, done);
+  });
+
+  it('should not destroy buffers on update', function(done) {
+    db.transaction(function*(t) {
+      var f = yield thirdDao.findOne('value = ?', 'Frank', { t: t });
+      f.bob = new Buffer('xyz', 'utf8');
+      yield thirdDao.update(f, { t: t });
+      f = yield thirdDao.findOne('value = ?', 'Frank', { t: t });
+      f.bob[0].should.equal(120);
+    }).then(done, done);
+  });
 });
 
 describe('finding', function() {
@@ -313,7 +331,7 @@ describe('finding', function() {
     }).then(done, done);
   });
 
-  it('should handle queries that are just randomw whitespace', function(done) {
+  it('should handle queries that are just random whitespace', function(done) {
     db.transaction(function*() {
       var ts = yield dao.find('  \t\n\n\r \n');
       ts.length.should.be.greaterThan(1);

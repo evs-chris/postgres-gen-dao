@@ -251,8 +251,9 @@ module.exports = function(opts) {
   var insert = function(obj, opts) {
     opts = opts || {};
     var sql = 'INSERT INTO "' + table + '" (\n\t';
-    var cols = [], params = [], fetch = [], tmp = _.cloneDeep(obj);
+    var cols = [], params = [], fetch = [], tmp = {};
     var c, col, nm, columns = out.columns;
+    for (nm in obj) tmp[nm] = obj[nm];
     for (c in columns) {
       col = columns[c];
       nm = tmp.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
@@ -299,7 +300,9 @@ module.exports = function(opts) {
     opts = opts || {};
     var sql = 'UPDATE "' + table + '" SET\n\t';
     var cols = [], cond = [], tmp = [], fetch = [];
-    var c, col, nm, tnm, last, params = _.cloneDeep(obj);
+    var c, col, nm, tnm, last, params = {};
+
+    for (nm in obj) params[nm] = obj[nm];
 
     if (out.keys.length > 0) {
       for (c in out.columns) {
