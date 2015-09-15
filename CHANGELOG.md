@@ -1,3 +1,7 @@
+## 0.17.0
+
+* __BREAKING:__ The default optimistic concurrency field will now truncate the PostgreSQL field that it matches against to the millisecond since that is the limit of the js Date object. This means that postgres-gen-dao can now peacefully coexist with the use of `now()` for the `updated_at` field. It also means that should there happen to be an external update that happens in less than a millisecond, it will be overwritten. The definition for the concurrecy field definitions also changed from an array to an object.
+
 ## 0.16.1
 
 * __BUG:__ Buffers are no longer mangled beyond recognition on insert and update. This started with `0.15.0`.
