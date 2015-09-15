@@ -122,6 +122,31 @@ describe('upserts, inserts, and updates', function() {
     }).then(done, done);
   });
 
+  it('should not update existing records that have an optimisitic mismatch', function(done) {
+    var pr = db.transaction(function*(t) {
+      var i = yield optimistDao.findOne('id = ?', 1, { t: t });
+      i.id.should.equal('1');
+      yield t.nonQuery('update optimist set updated_at = now() where id = 1', { t: t });
+      yield optimistDao.update(i, { t: t });
+    });
+    pr.then(function() {
+      done(new Error('Update should have failed'));
+    }, function(err) {
+      if (err.message === 'Wrong number of results. Expected 1. Got 0.') done();
+      else done(new Error('Wrong failure: ' + err.message));
+    });
+  });
+
+  it('should truncate the optimistic concurrency value to a resolution js can handle', function(done) {
+    db.transaction(function*(t) {
+      var i = yield optimistDao.findOne('id = ?', 1, { t: t });
+      i.id.should.equal('1');
+      yield t.nonQuery('update optimist set updated_at = now() where id = 1', { t: t });
+      i.updatedAt = (yield t.queryOne('select updated_at from optimist where id = 1')).updated_at;
+      yield optimistDao.update(i);
+    }).then(done, done);
+  });
+
   it('should only send available fields on update', function(done) {
     db.transaction(function*() {
       var i = yield dao.findOne('id = ?', 1);
@@ -385,6 +410,30 @@ describe('deleting', function() {
       i._generated_loaded.should.equal(true);
       yield keylessDao.delete(i);
       (yield keylessDao.find('num = 10')).length.should.equal(0);
+    }).then(done, done);
+  });
+
+  it('should no delete optimistic mismatches', function(done) {
+    var pr = db.transaction(function*(t) {
+      var i = yield optimistDao.findOne('id = ?', 1);
+      yield t.nonQuery('update optimist set updated_at = now()');
+      yield optimistDao.delete(i);
+    });
+
+    pr.then(function() {
+      done(new Error('Delete should have failed'));
+    }, function(err) {
+      if (err.message === 'Expected to delete 1 record, but instead tried to delete 0.') done();
+      else done(new Error('Wrong failure: ' + err.message));
+    });
+  });
+
+  it('should truncate the optimistic value to a resolution js can handle', function(done) {
+    db.transaction(function*(t) {
+      var i = yield optimistDao.findOne('id = ?', 1, { t: t });
+      yield t.nonQuery('update optimist set updated_at = now() where id = 1');
+      i.updatedAt = (yield t.queryOne('select updated_at from optimist where id = 1')).updated_at;
+      yield optimistDao.del(i, { t: t });
     }).then(done, done);
   });
 });

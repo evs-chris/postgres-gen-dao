@@ -71,7 +71,9 @@ var gopts = {
   camelCase: true,
   optimisticConcurrency: {
     value: function(/*i*/) { return new Date(); },
-    columns: ['updated_at']
+    columns: {
+      'updated_at': function(name) { return 'date_trunc(\'milliseconds\',  ' + ident(name) + ')'; }
+    }
   }
 };
 
@@ -84,7 +86,7 @@ module.exports = function(opts) {
   var emptyStringToNull = (opts.hasOwnProperty('emptyStringToNull') ? opts.emptyStringToNull : (gopts.hasOwnProperty('emptyStringToNull') ? gopts.emptyStringToNull : true));
   var concurrency = opts.optimisticConcurrency || {};
   var gconcurrency = gopts.optimisticConcurrency || {};
-  var optConcur = concurrency.columns || gconcurrency.columns || [];
+  var optConcur = concurrency.columns || gconcurrency.columns || {};
   var concurVal = concurrency.value || gconcurrency.value || function() { return new Date(); };
   var table = opts.table;
   out.prototype = opts.prototype || {};
@@ -308,21 +310,25 @@ module.exports = function(opts) {
       for (c in out.columns) {
         col = out.columns[c];
         tnm = nm = params.hasOwnProperty(col.name) ? col.name : camelCase(col.name);
-        if (out.keys.indexOf(col.name) < 0 && optConcur.indexOf(col.name) < 0) {
+        if (out.keys.indexOf(col.name) < 0 && !optConcur.hasOwnProperty(col.name)) {
           if (params.hasOwnProperty(nm)) cols.push({ name: col.name, value: (params[nm] === '' && !stringType.test(col.type) && emptyStringToNull) ? 'null' : '$' + nm, cast: col.cast });
 
           if (col.json) params[nm] = JSON.stringify(params[nm]);
           // tell postgres-gen that this needs to be turned into ARRAY[...] instead of (...)
           else if (Array.isArray(params[nm])) params[nm].literalArray = true;
         } else {
-          if (optConcur.indexOf(col.name) >= 0) {
+          if (optConcur.hasOwnProperty(col.name)) {
             var v = concurVal(col.name);
             tnm = '_generated_' + col.name;
             params[tnm] = v;
             fetch.push({ name: nm, value: v });
             cols.push({ name: col.name, value: '$' + tnm, cast: col.cast });
           }
-          cond.push({ name: col.name, value: nm });
+          if (typeof optConcur[col.name] === 'function') {
+            cond.push({ literal: true, name: optConcur[col.name](col.name), value: nm });
+          } else {
+            cond.push({ name: col.name, value: nm });
+          }
         }
       }
     } else if (params.hasOwnProperty('_generated_last_values') || opts.lastValues) {
@@ -355,6 +361,7 @@ module.exports = function(opts) {
     for (c in cond) {
       nm = cond[c].value;
       if (params[nm] === null || params[nm] === undefined) tmp.push(ident(cond[c].name) + ' is null');
+      else if (cond[c].literal) tmp.push(cond[c].name + ' = $' + cond[c].value);
       else tmp.push(ident(cond[c].name) + ' = $' + cond[c].value);
     }
     sql += tmp.join(' AND ') + ';';
@@ -366,7 +373,7 @@ module.exports = function(opts) {
       var c;
       for (c in fetch) obj[fetch[c].name] = fetch[c].value;
       for (c in optConcur) {
-        delete obj['_generated_' + optConcur[c]];
+        delete obj['_generated_' + c];
       }
 
       // keep last values up to date for keyless tables
@@ -398,8 +405,11 @@ module.exports = function(opts) {
           if (!obj.hasOwnProperty(camelCase(keys[i]))) res = false;
         }
 
-        for (i = 0; res && i < optConcur.length; i++) {
-          if (!obj.hasOwnProperty(camelCase(optConcur[i]))) res = false;
+        for (i in optConcur) {
+          if (!obj.hasOwnProperty(i) && !obj.hasOwnProperty(camelCase(i))) {
+            res = false;
+            break;
+          }
         }
       }
 
@@ -426,13 +436,17 @@ module.exports = function(opts) {
         for (c in out.columns) {
           c = out.columns[c];
           name = obj.hasOwnProperty(c.name) ? c.name : camelCase(c.name);
-          if (out.keys.indexOf(c.name) > -1 || optConcur.indexOf(c.name) > -1) {
+          if (out.keys.indexOf(c.name) > -1 || optConcur.hasOwnProperty(c.name)) {
             if (hasQuery) sql += ' AND ';
             hasQuery = true;
 
             if (obj[name] === null || obj[name] === undefined) sql += ident(c.name) + ' is null';
             else {
-              sql += ident(c.name) + ' = ?';
+              if (typeof optConcur[c.name] === 'function') {
+                sql += optConcur[c.name](c.name) + ' = ?';
+              } else {
+                sql += ident(c.name) + ' = ?';
+              }
               params.push(obj[name]);
             }
           }
