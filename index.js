@@ -24,7 +24,7 @@ function ident(name) {
 }
 
 var registry = {};
-var tableAliases = /@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s(?:(?!\s*(?:on|where)\s)\s*(?:[aA][sS])?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?)?/gi;
+var tableAliases = /@"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?(?!\.)\s(?:(?!\s*(?:on|where)\s)\s*(?:[aA][sS]\s)?\s*"?([a-zA-Z_]+[a-zA-Z0-9_]*)?"?)?/gi;
 var fieldAliases = /@:?"?([a-zA-Z_]+[a-zA-Z0-9_]*)"?\."?([a-zA-Z_]+[a-zA-Z0-9_]+|\*)"?/gi;
 var startsWithOrder = /^\s*order\s+/i, startsWithWhere = /^\s*where\s+/i, noText = /^\s*$/;
 
