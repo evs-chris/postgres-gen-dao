@@ -1,3 +1,8 @@
+## 0.17.1
+
+* __BUG:__ When processing a ql statement, make sure that table aliases using `AS` have a space after the `AS` to avoid things like `... FROM foo assimilated ...` turning into `... FROM foo as similated ...`.
+* __BUG:__ Properly handle literal arrays when inserting.
+
 ## 0.17.0
 
 * __BREAKING:__ The default optimistic concurrency field will now truncate the PostgreSQL field that it matches against to the millisecond since that is the limit of the js Date object. This means that postgres-gen-dao can now peacefully coexist with the use of `now()` for the `updated_at` field. It also means that should there happen to be an external update that happens in less than a millisecond, it will be overwritten. The definition for the concurrecy field definitions also changed from an array to an object.
