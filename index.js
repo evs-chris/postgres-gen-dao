@@ -262,9 +262,10 @@ module.exports = function(opts) {
       if (tmp.hasOwnProperty(nm)) {
         cols.push(ident(col.name));
         if (tmp[nm] === '' && !stringType.test(col.type) && emptyStringToNull) params.push('null');
-        else params.push('$' + nm + (!!c.cast ? '::' + c.cast : ''));
+        else params.push('$' + nm + (!!col.cast ? '::' + col.cast : ''));
 
         if (col.json && !col.cast) tmp[nm] = JSON.stringify(tmp[nm]);
+        else if (Array.isArray(tmp[nm])) tmp[nm].literalArray = true;
       } else if (col.elidable) {
         fetch.push(col.name);
       } else throw new Error('Missing non-elidable column ' + col.name + '.');
