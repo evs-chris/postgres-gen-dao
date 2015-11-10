@@ -1,3 +1,7 @@
+## 0.18.0
+
+* Adds support for casting fields during select with the new `selectCast` map. This is handy for when you have to support a database with non-zoned time fields that is not set up in UTC. You can use `selectCast: { some_non_zoned_field: "timestamptz at time zone 'UTC'" }` and your timestamps will come back handily UTC-ed.
+
 ## 0.17.1
 
 * __BUG:__ When processing a ql statement, make sure that table aliases using `AS` have a space after the `AS` to avoid things like `... FROM foo assimilated ...` turning into `... FROM foo as similated ...`.
