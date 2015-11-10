@@ -50,13 +50,13 @@ var qlToQuery = function(params) {
       var arr = [];
       for (c in dao.columns) {
         if ((exclude[alias] || []).indexOf(dao.columns[c].name) === -1) {
-          arr.push(ident(alias) + '.' + ident(dao.columns[c].name) + ' AS ' + ident('_' + alias + '__' + dao.columns[c].name));
+          arr.push(ident(alias) + '.' + ident(dao.columns[c].name) + (dao.selectCast[dao.columns[c].name] ? '::' + dao.selectCast[dao.columns[c].name] : '') + ' AS ' + ident('_' + alias + '__' + dao.columns[c].name));
         }
       }
       return arr.join(', ');
     } else {
       c = _.find(dao.columns, function(cc) { return cc.name === col; });
-      if (!!c) return (m.indexOf(':') === -1 ? ident(alias) + '.' + ident(c.name) + ' AS ' : '') + ident('_' + alias + '__' + c.name);
+      if (!!c) return (m.indexOf(':') === -1 ? ident(alias) + '.' + ident(c.name) + (dao.selectCast[c.name] ? '::' + dao.selectCast[c.name] : '') + ' AS ' : '') + ident('_' + alias + '__' + c.name);
       else return '';
     }
   });
@@ -79,8 +79,9 @@ var gopts = {
 
 module.exports = function(opts) {
   opts = opts || {};
-  var casts = opts.cast || {};
   var out = opts.target || {};
+  var casts = opts.cast || {};
+  var scasts = opts.selectCast || {};
   var db = opts.db;
   var useCamelCase = (opts.hasOwnProperty('camelCase') ? opts.camelCase : (gopts.hasOwnProperty('camelCase') ? gopts.camelCase : true));
   var emptyStringToNull = (opts.hasOwnProperty('emptyStringToNull') ? opts.emptyStringToNull : (gopts.hasOwnProperty('emptyStringToNull') ? gopts.emptyStringToNull : true));
@@ -90,6 +91,9 @@ module.exports = function(opts) {
   var concurVal = concurrency.value || gconcurrency.value || function() { return new Date(); };
   var table = opts.table;
   out.prototype = opts.prototype || {};
+
+  out.cast = casts;
+  out.selectCast = scasts;
 
   // always start unloaded
   out.prototype._generated_loaded = false;
@@ -176,7 +180,7 @@ module.exports = function(opts) {
 
     q.query = 'SELECT ' + this.columns.
       filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).
-      map(function(c) { return ident(c.name); }).join(', ') +
+      map(function(c) { return ident(c.name) + (scasts[c.name] ? '::' + scasts[c.name] + ' as ' + ident(c.name) : ''); }).join(', ') +
         ' FROM ' + ident(table) +
         (hasCond ? (!startsWithOrder.test(q.query) && !startsWithWhere.test(q.query) ? ' WHERE ' : ' ') + q.query : '') + ';';
 
@@ -200,7 +204,7 @@ module.exports = function(opts) {
 
     q.query = 'SELECT ' + this.columns.
       filter(function(c) { return q.options.exclude.indexOf(c.name) === -1; }).
-      map(function(c) { return ident(c.name); }).join(', ') +
+      map(function(c) { return ident(c.name) + (scasts[c.name] ? '::' + scasts[c.name] + ' as ' + ident(c.name) : ''); }).join(', ') +
         ' FROM ' + ident(table) +
         (hasCond ? (!startsWithOrder.test(q.query) && !startsWithWhere.test(q.query) ? ' WHERE ' : ' ') + q.query : '') + ';';
 
@@ -274,7 +278,7 @@ module.exports = function(opts) {
     sql += '\n) VALUES (\n\t';
     sql += params.join(', ') + '\n)';
     if (fetch.length > 0)
-      sql += ' RETURNING ' + fetch.join(', ') + ';';
+      sql += ' RETURNING ' + fetch.map(function(n) { return ident(n) + (scasts[n] ? '::' + scasts[n] + ' as ' + ident(n) : ''); }).join(', ') + ';';
 
     var target = opts.transaction || opts.trans || opts.t || opts.db || db;
 

@@ -10,7 +10,7 @@ var mod = require('./');
 var pg = require('postgres-gen');
 var db = pg({ host: 'localhost', db: 'postgres_gen_test', user: 'postgres_gen_test', password: 'postgres_gen_test' });
 
-var dao, otherDao, thirdDao, keylessDao, optimistDao;
+var dao, otherDao, thirdDao, keylessDao, optimistDao, castyDao;
 var proto = { foo: true };
 
 var stmts = [];
@@ -24,26 +24,31 @@ function logerr(then) {
 }
 
 before(function(done) {
+  // NOTE: Some tests require the database timezone to be non-UTC
   db.transaction(function*() {
     yield db.nonQuery('drop table if exists test;');
     yield db.nonQuery('drop table if exists other;');
     yield db.nonQuery('drop table if exists third;');
     yield db.nonQuery('drop table if exists keyless;');
     yield db.nonQuery('drop table if exists optimist;');
+    yield db.nonQuery('drop table if exists casty;');
     yield db.nonQuery('create table test (id bigserial primary key, name varchar, email varchar);');
     yield db.nonQuery('create table other (id bigserial primary key, test_id bigint, value varchar);');
     yield db.nonQuery('create table third (id bigserial primary key, other_id bigint, value varchar, stuff json, bob bytea);');
     yield db.nonQuery('create table keyless (str varchar, flag boolean, num integer);');
     yield db.nonQuery('create table optimist (id bigserial primary key, name varchar, updated_at timestamptz not null default CURRENT_TIMESTAMP(3));');
+    yield db.nonQuery('create table casty (id serial primary key, name varchar, updated_at timestamp without time zone not null default now());');
     dao = mod({ db: db, table: 'test', prototype: proto });
     otherDao = mod({ db: db, table: 'other' });
     thirdDao = mod({ db: db, table: 'third' });
     keylessDao = mod({ db: db, table: 'keyless' });
     optimistDao = mod({ db: db, table: 'optimist' });
+    castyDao = mod({ db: db, table: 'casty', selectCast: { updated_at: "timestamptz at time zone 'utc'" } });
     (yield dao.find()).length.should.equal(0);
     (yield otherDao.find()).length.should.equal(0);
     (yield keylessDao.find()).length.should.equal(0);
     (yield optimistDao.find()).length.should.equal(0);
+    (yield castyDao.find()).length.should.equal(0);
     dao.columns.length.should.equal(3);
   }).then(done, done);
 });
@@ -272,6 +277,18 @@ describe('upserts, inserts, and updates', function() {
       f.bob[0].should.equal(120);
     }).then(done, done);
   });
+
+  it('should return properly select-cast values on insert', function(done) {
+    db.transaction(function*() {
+      var c = castyDao.new();
+      c.name = 'foo';
+      yield castyDao.insert(c);
+      var c2 = yield castyDao.findOne('id = 1');
+      (+c2.updatedAt).should.equal(+c.updatedAt);
+      var ts = (yield db.queryOne('select updated_at from casty limit 1;')).updated_at;
+      (+ts).should.not.equal(+c2.updatedAt);
+    }).then(done, done);
+  });
 });
 
 describe('finding', function() {
@@ -370,6 +387,13 @@ describe('finding', function() {
     }).then(done, done);
   });
 
+  it('should handle select-cast in ql', function(done) {
+    db.transaction(function*() {
+      var rs = yield castyDao.query('select * from casty;');
+      rs.length.should.equal(1);
+      assert(!!rs[0].updatedAt);
+    }).then(done, done);
+  });
   describe('fetching', function() {
     it('should properly fetch associated records', function(done) {
       db.transaction(function*(t) {
