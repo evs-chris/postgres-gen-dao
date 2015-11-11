@@ -72,7 +72,7 @@ var gopts = {
   optimisticConcurrency: {
     value: function(/*i*/) { return new Date(); },
     columns: {
-      'updated_at': function(name) { return 'date_trunc(\'milliseconds\',  ' + ident(name) + ')'; }
+      'updated_at': function(name) { return 'date_trunc(\'milliseconds\',  ' + ident(name) + (this.selectCast[name] ? '::' + this.selectCast[name] : '') + ')'; }
     }
   }
 };
@@ -330,7 +330,7 @@ module.exports = function(opts) {
             cols.push({ name: col.name, value: '$' + tnm, cast: col.cast });
           }
           if (typeof optConcur[col.name] === 'function') {
-            cond.push({ literal: true, name: optConcur[col.name](col.name), value: nm });
+            cond.push({ literal: true, name: optConcur[col.name].call(out, col.name), value: nm });
           } else {
             cond.push({ name: col.name, value: nm });
           }
@@ -448,7 +448,7 @@ module.exports = function(opts) {
             if (obj[name] === null || obj[name] === undefined) sql += ident(c.name) + ' is null';
             else {
               if (typeof optConcur[c.name] === 'function') {
-                sql += optConcur[c.name](c.name) + ' = ?';
+                sql += optConcur[c.name].call(out, c.name) + ' = ?';
               } else {
                 sql += ident(c.name) + ' = ?';
               }
