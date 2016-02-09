@@ -477,8 +477,8 @@ module.exports = function(opts) {
 
       if (!hasQuery) return Promise.reject(new Error('Can\'t identify this object in the database.'));
 
-      var next = function*() {
-        var count = yield db.nonQuery(sql, params);
+      var next = function*(t) {
+        var count = yield t.nonQuery(sql, params);
         if (count !== 1) throw new Error('Expected to delete 1 record, but instead tried to delete ' + count + '.');
         delete obj._generated_loaded;
         return count;
