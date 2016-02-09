@@ -89,7 +89,8 @@ Both find and findOne take the same parameters. The only difference is findOne w
 #### `options`
 
 `exclude` - an array of column names to exclude from the query.
-`transaction` - may be specified to make sure that this query participates in the given transaction. There are also aliases for `trans` and `t` that can be used conveniently with ES6 object literal e.g. `db.transaction(function*(t) { return yield dao.query('select * from foos;', { t }); } )`.
+
+`transaction` - may be specified to make sure that this query participates in the given transaction. There are also `transaction` aliases `trans` and `t` that can be used conveniently with ES6 object literal short syntax e.g. `db.transaction(function*(t) { return yield dao.query('select * from foos;', { t }); } )`.
 
 ### `insert( object, [ options ] )`
 

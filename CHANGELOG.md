@@ -1,3 +1,7 @@
+## 0.18.2
+
+* __BUG:__ Make sure `dao.delete(obj, { transaction })` actually uses the transaction for running the delete statement.
+
 ## 0.18.1
 
 * Apply select casts to default optimistic concurrency function too.
